@@ -4,6 +4,10 @@
   const STORAGE_KEY = "saay-opportunities-v1";
   const PROFILE_KEY = "saay-profile-v1";
   const SHARED_KEY = "saay-first-share-seen-v1";
+  const DRAFT_KEY = "saay-assessment-draft-v1";
+  const CV_LIMIT = 50000;
+  const PDF_LIMIT = 8 * 1024 * 1024;
+  const ENGINE = window.SAAYAssessmentEngine;
   const STAGES = ["Saved", "Applied", "Assessment", "Interview", "Offer", "Rejected", "Withdrawn"];
   const TYPES = ["Internship", "Cooperative Training", "Graduate Program", "Full-Time Job", "Part-Time Job", "Other"];
   const ACTIVE_STAGES = ["Applied", "Assessment", "Interview", "Offer"];
@@ -25,7 +29,8 @@
     sort: "updated",
     opportunities: [],
     assessmentStep: 1,
-    assessmentDraft: null
+    assessmentDraft: null,
+    storageNoticeShown: false
   };
 
   const app = document.getElementById("app");
@@ -107,6 +112,31 @@
     return typeof window.SAAY_SAMPLE_DATA === "function" ? window.SAAY_SAMPLE_DATA() : [];
   }
 
+  function normalizeProfile(profile = {}) {
+    const cv = profile.cv && typeof profile.cv === "object" ? profile.cv : { text: "", updatedAt: "" };
+    return {
+      schemaVersion: 2,
+      updatedAt: profile.updatedAt || "",
+      education: String(profile.education || ""),
+      status: String(profile.status || ""),
+      experience: String(profile.experience || ""),
+      skills: String(profile.skills || ""),
+      desiredType: String(profile.desiredType || ""),
+      roles: String(profile.roles || ""),
+      locations: String(profile.locations || ""),
+      workstyle: String(profile.workstyle || ""),
+      availability: String(profile.availability || ""),
+      linkedin: String(profile.linkedin || ""),
+      cv: { text: String(cv.text || "").slice(0, CV_LIMIT), updatedAt: String(cv.updatedAt || "") }
+    };
+  }
+
+  function normalizeAssessment(assessment) {
+    if (!assessment) return null;
+    if (assessment.schemaVersion === 2) return assessment;
+    return { ...assessment, schemaVersion: 1, status: "legacy" };
+  }
+
   function normalizeOpportunity(record) {
     const now = new Date().toISOString();
     const stage = STAGES.includes(record.stage) ? record.stage : "Saved";
@@ -126,25 +156,43 @@
       expectedResponseDate: record.expectedResponseDate || "",
       nextReminderDate: record.nextReminderDate || "",
       followUpHistory: Array.isArray(record.followUpHistory) ? record.followUpHistory : [],
-      assessment: record.assessment || null,
+      assessment: normalizeAssessment(record.assessment),
       createdAt: record.createdAt || now,
       updatedAt: record.updatedAt || now
     };
   }
 
+  const sessionStorageFallback = new Map();
+
+  function showStorageNotice() {
+    if (state.storageNoticeShown) return;
+    state.storageNoticeShown = true;
+    window.setTimeout(() => showToast("Browser storage is unavailable. Your changes will only last until this tab closes."), 0);
+  }
+
+  function readStorage(key) {
+    try { return localStorage.getItem(key); } catch { showStorageNotice(); return sessionStorageFallback.get(key) || null; }
+  }
+
+  function writeStorage(key, value) {
+    try { localStorage.setItem(key, value); } catch { sessionStorageFallback.set(key, value); showStorageNotice(); }
+  }
+
+  function removeStorage(key) {
+    try { localStorage.removeItem(key); } catch { sessionStorageFallback.delete(key); showStorageNotice(); }
+  }
+
   const repository = {
     get() {
       try {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const saved = readStorage(STORAGE_KEY);
         if (!saved) return [];
         const parsed = JSON.parse(saved);
         return Array.isArray(parsed) ? parsed.map(normalizeOpportunity) : [];
-      } catch (error) {
-        return [];
-      }
+      } catch { return []; }
     },
     save(records) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+      writeStorage(STORAGE_KEY, JSON.stringify(records));
     },
     loadSamples(existingRecords = []) {
       const samples = cloneSamples().map(normalizeOpportunity);
@@ -154,13 +202,32 @@
       return records;
     },
     clear() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+      this.save([]);
       return [];
     },
     profile() {
-      try { return JSON.parse(localStorage.getItem(PROFILE_KEY)) || {}; } catch { return {}; }
+      try { return normalizeProfile(JSON.parse(readStorage(PROFILE_KEY)) || {}); } catch { return normalizeProfile({}); }
     },
-    saveProfile(profile) { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); }
+    saveProfile(profile) {
+      const normalized = normalizeProfile({ ...profile, updatedAt: new Date().toISOString() });
+      writeStorage(PROFILE_KEY, JSON.stringify(normalized));
+      return normalized;
+    },
+    clearProfile() {
+      removeStorage(PROFILE_KEY);
+      return normalizeProfile({});
+    },
+    shareSeen() { return Boolean(readStorage(SHARED_KEY)); },
+    setShareSeen() { writeStorage(SHARED_KEY, "true"); },
+    draft() {
+      try { return JSON.parse(readStorage(DRAFT_KEY)) || null; } catch { return null; }
+    },
+    saveDraft(draft, step) {
+      if (!draft) return;
+      const { result, errorMessage, ...safeDraft } = draft;
+      writeStorage(DRAFT_KEY, JSON.stringify({ draft: safeDraft, step }));
+    },
+    clearDraft() { removeStorage(DRAFT_KEY); }
   };
 
   function saveOpportunities(records = state.opportunities) {
@@ -372,29 +439,90 @@
     </section>`;
   }
 
-  function renderRecord(record) {
-    const waiting = isAttention(record);
-    return `<article class="record-card"><div class="record-main"><div class="record-title-row"><h3 class="record-title">${escapeHtml(record.title)}</h3>${stageBadge(record.stage)}${demoBadge(record)}${waiting ? '<span class="badge badge--attention">Needs attention</span>' : ""}</div><p class="record-company">${escapeHtml(record.company)}</p><div class="record-meta"><span>${escapeHtml(record.opportunityType)}</span><span>${record.applicationDate ? `Applied ${formatDate(record.applicationDate)}` : "Not applied yet"}</span><span>Stage updated ${formatDate(record.stageChangedAt)}</span>${record.nextReminderDate ? `<span>Reminder ${dateValueLabel(record.nextReminderDate)}</span>` : ""}</div>${waiting ? `<p class="attention-message"><span class="attention-dot" aria-hidden="true"></span>${escapeHtml(attentionText(record))}</p>` : ""}</div><div class="record-actions"><button type="button" class="button button--secondary button--small" data-action="view-record" data-id="${record.id}">View</button>${record.officialUrl ? `<button type="button" class="button button--small" data-action="apply-link" data-id="${record.id}">Employer website</button>` : ""}</div></article>`;
+  function assessmentIsStale(assessment) {
+    return assessment?.schemaVersion === 2 && assessment.profileRevisionUsed && assessment.sourceSelection?.profile && assessment.profileRevisionUsed !== repository.profile().updatedAt;
   }
 
-  function blankAssessmentDraft() {
+  function assessmentBadge(record) {
+    if (!record.assessment) return "";
+    if (record.assessment.schemaVersion !== 2) return '<span class="badge badge--assessment">Earlier assessment</span>';
+    return `<span class="badge badge--assessment">${assessmentIsStale(record.assessment) ? "Assessment needs refresh" : "Assessment saved"}</span>`;
+  }
+
+  function renderRecord(record) {
+    const waiting = isAttention(record);
+    return `<article class="record-card"><div class="record-main"><div class="record-title-row"><h3 class="record-title">${escapeHtml(record.title)}</h3>${stageBadge(record.stage)}${demoBadge(record)}${assessmentBadge(record)}${waiting ? '<span class="badge badge--attention">Needs attention</span>' : ""}</div><p class="record-company">${escapeHtml(record.company)}</p><div class="record-meta"><span>${escapeHtml(record.opportunityType)}</span><span>${record.applicationDate ? `Applied ${formatDate(record.applicationDate)}` : "Not applied yet"}</span><span>Stage updated ${formatDate(record.stageChangedAt)}</span>${record.nextReminderDate ? `<span>Reminder ${dateValueLabel(record.nextReminderDate)}</span>` : ""}</div>${waiting ? `<p class="attention-message"><span class="attention-dot" aria-hidden="true"></span>${escapeHtml(attentionText(record))}</p>` : ""}</div><div class="record-actions"><button type="button" class="button button--secondary button--small" data-action="view-record" data-id="${record.id}">View</button><button type="button" class="button button--secondary button--small" data-action="reassess-record" data-id="${record.id}">${record.assessment ? "Reassess" : "Assess"}</button>${record.officialUrl ? `<button type="button" class="button button--small" data-action="apply-link" data-id="${record.id}">Employer website</button>` : ""}</div></article>`;
+  }
+
+  function blankManualDetails() {
+    return { education: "", status: "", experience: "", skills: "", desiredType: "", roles: "", locations: "", workstyle: "", availability: "", linkedin: "" };
+  }
+
+  function blankAssessmentDraft(record = null) {
+    const assessment = record?.assessment?.schemaVersion === 2 ? record.assessment : null;
+    const savedProfile = repository.profile();
+    const snapshot = assessment?.jobSnapshot || {};
+    const job = record || assessment ? {
+      company: record?.company || snapshot.company || "",
+      title: record?.title || snapshot.title || "",
+      opportunityType: record?.opportunityType || snapshot.opportunityType || "Internship",
+      officialUrl: record?.officialUrl || snapshot.officialUrl || "",
+      description: snapshot.description || ""
+    } : { company: "", title: "", opportunityType: "Internship", officialUrl: "", description: "" };
     return {
-      profile: { ...repository.profile() },
-      job: { company: "", title: "", opportunityType: "Internship", officialUrl: "", description: "" },
-      result: null
+      targetRecordId: record?.id || null,
+      targetMode: record ? "reassess" : "new",
+      profile: assessment?.candidateSnapshot?.profile ? normalizeProfile(assessment.candidateSnapshot.profile) : savedProfile,
+      sourceSelection: assessment?.sourceSelection || { profile: true, cvPaste: Boolean(savedProfile.cv.text), manual: false },
+      cv: { text: assessment?.candidateSnapshot?.cvText || savedProfile.cv.text || "", saveToProfile: Boolean(savedProfile.cv.text), pdfAttempt: { status: "none" } },
+      manual: assessment?.candidateSnapshot?.manual || blankManualDetails(),
+      job,
+      result: null,
+      inputFingerprint: "",
+      runStatus: "idle",
+      runId: 0,
+      fixtureLabel: ""
     };
   }
 
+  function restoreAssessmentDraft() {
+    const saved = repository.draft();
+    if (!saved?.draft || !saved.draft.job) return false;
+    state.assessmentDraft = {
+      ...blankAssessmentDraft(),
+      ...saved.draft,
+      profile: normalizeProfile(saved.draft.profile),
+      sourceSelection: { profile: true, cvPaste: false, manual: false, ...saved.draft.sourceSelection },
+      cv: { text: "", saveToProfile: false, pdfAttempt: { status: "none" }, ...saved.draft.cv, pdfAttempt: { status: "none" } },
+      manual: { ...blankManualDetails(), ...saved.draft.manual },
+      job: { company: "", title: "", opportunityType: "Internship", officialUrl: "", description: "", ...saved.draft.job },
+      result: null,
+      runStatus: "idle"
+    };
+    state.assessmentStep = Math.min(2, Math.max(1, Number(saved.step) || 1));
+    return true;
+  }
+
+  function persistAssessmentDraft() {
+    if (state.assessmentDraft) repository.saveDraft(state.assessmentDraft, state.assessmentStep);
+  }
+
   function ensureAssessmentDraft() {
-    if (!state.assessmentDraft) state.assessmentDraft = blankAssessmentDraft();
+    if (!state.assessmentDraft && !restoreAssessmentDraft()) state.assessmentDraft = blankAssessmentDraft();
     return state.assessmentDraft;
+  }
+
+  function isDraftStale(draft) {
+    return draft.runStatus === "complete" && draft.result && ENGINE && draft.result.inputFingerprint !== ENGINE.createInputFingerprint(draft);
   }
 
   function renderAssessment() {
     const draft = ensureAssessmentDraft();
+    if (isDraftStale(draft)) draft.runStatus = "stale";
     const step = state.assessmentStep;
-    const content = step === 1 ? renderBackgroundStep(draft.profile) : step === 2 ? renderJobStep(draft.job) : renderAssessmentStep(draft);
-    return `<section class="wizard" aria-labelledby="assessment-title"><div class="wizard__intro"><p class="eyebrow">Check a job’s fit</p><h1 id="assessment-title">${step === 1 ? "Your background" : step === 2 ? "Job posting" : "Your assessment"}</h1><p>${step === 1 ? "Add or review the details you want SAAY to use. Everything is stored only in this browser." : step === 2 ? "Paste the official posting so you can compare it with your own background." : "Review what matches, what is unclear, and what to verify before you decide."}</p></div>${renderProgress(step)}<div class="wizard-card">${content}</div></section>`;
+    const content = step === 1 ? renderBackgroundStep(draft) : step === 2 ? renderJobStep(draft) : renderAssessmentStep(draft);
+    const reassess = draft.targetMode === "reassess" ? `<p class="assessment-context">Reassessing saved opportunity: <strong>${escapeHtml(draft.job.title)}</strong> at ${escapeHtml(draft.job.company)}.</p>` : "";
+    return `<section class="wizard" aria-labelledby="assessment-title"><div class="wizard__intro"><p class="eyebrow">Check a job’s fit</p><h1 id="assessment-title">${step === 1 ? "Your background" : step === 2 ? "Job posting" : "Your assessment"}</h1><p>${step === 1 ? "Choose the background evidence you want to review. Everything stays in this browser." : step === 2 ? "Confirm the posting details and paste the only job text SAAY will assess." : "Review transparent keyword and rule-based evidence—not a hiring prediction."}</p>${reassess}${draft.fixtureLabel ? `<p class="fixture-label">Fictional verification example: ${escapeHtml(draft.fixtureLabel)}</p>` : ""}</div>${renderProgress(step)}<div class="wizard-card">${content}</div></section>`;
   }
 
   function renderProgress(current) {
@@ -402,35 +530,42 @@
     return `<ol class="progress" aria-label="Assessment progress">${labels.map((label, index) => `<li class="progress__step ${current === index + 1 ? "is-current" : current > index + 1 ? "is-complete" : ""}" ${current === index + 1 ? 'aria-current="step"' : ""}><span>${index + 1}</span><strong>${label}</strong></li>`).join("")}</ol>`;
   }
 
-  function renderBackgroundStep(profile) {
-    return `<form id="background-step-form" novalidate><div class="wizard-card__header"><h2>Step 1: Your background</h2><p>Add what you are comfortable using to assess a role. Fields are optional unless marked otherwise.</p></div><div class="error-summary" id="wizard-errors" tabindex="-1"><p>Review the highlighted field.</p><ul></ul></div><div class="form-grid"><div class="field"><label for="profile-education">Education / field of study <span class="field-help">(optional)</span></label><input class="input" id="profile-education" name="education" value="${escapeAttr(profile.education || "")}"></div><div class="field"><label for="profile-status">Student or graduate status <span class="field-help">(optional)</span></label><select class="select" id="profile-status" name="status"><option value="">Choose if helpful</option>${["Student", "Recent graduate", "Graduate", "Other"].map(value => `<option value="${value}" ${(profile.status || "") === value ? "selected" : ""}>${value}</option>`).join("")}</select></div><div class="field field--full"><label for="profile-experience">Experience <span class="field-help">(optional)</span></label><textarea class="textarea" id="profile-experience" name="experience" placeholder="Paste a short, accurate summary of experience.">${escapeHtml(profile.experience || "")}</textarea></div><div class="field field--full"><label for="profile-skills">Skills <span class="field-help">(optional)</span></label><input class="input" id="profile-skills" name="skills" value="${escapeAttr(profile.skills || "")}" placeholder="e.g. research, Excel, communication"></div><div class="field"><label for="profile-type">Desired opportunity type <span class="field-help">(optional)</span></label><select class="select" id="profile-type" name="desiredType"><option value="">No preference set</option>${TYPES.map(value => `<option value="${value}" ${(profile.desiredType || "") === value ? "selected" : ""}>${value}</option>`).join("")}</select></div><div class="field"><label for="profile-roles">Preferred roles / fields <span class="field-help">(optional)</span></label><input class="input" id="profile-roles" name="roles" value="${escapeAttr(profile.roles || "")}"></div><div class="field"><label for="profile-locations">Preferred locations <span class="field-help">(optional)</span></label><input class="input" id="profile-locations" name="locations" value="${escapeAttr(profile.locations || "")}"></div><div class="field"><label for="profile-workstyle">Work style / relocation <span class="field-help">(optional)</span></label><input class="input" id="profile-workstyle" name="workstyle" value="${escapeAttr(profile.workstyle || "")}" placeholder="e.g. remote, willing to relocate"></div><div class="field"><label for="profile-availability">Availability to start <span class="field-help">(optional)</span></label><input class="input" id="profile-availability" name="availability" value="${escapeAttr(profile.availability || "")}"></div><div class="field"><label for="profile-linkedin">LinkedIn URL <span class="field-help">(optional reference only)</span></label><input class="input" id="profile-linkedin" name="linkedin" type="url" value="${escapeAttr(profile.linkedin || "")}" placeholder="https://..." aria-describedby="profile-linkedin-error"><span class="field-error" id="profile-linkedin-error" data-wizard-error-for="linkedin"></span></div></div><p class="disclaimer"><strong>Keep it accurate.</strong> SAAY does not read LinkedIn or upload your information anywhere. Add skills and experience only when they accurately reflect your background.</p><div class="form-actions"><button type="submit" class="button">Continue to job posting</button></div></form>`;
+  function backgroundFields(profile, prefix = "profile", namePrefix = "") {
+    const name = field => `${namePrefix}${field}`;
+    return `<div class="form-grid"><div class="field"><label for="${prefix}-education">Education / field of study <span class="field-help">(optional)</span></label><input class="input" id="${prefix}-education" name="${name("education")}" value="${escapeAttr(profile.education || "")}"></div><div class="field"><label for="${prefix}-status">Student or graduate status <span class="field-help">(optional)</span></label><select class="select" id="${prefix}-status" name="${name("status")}"><option value="">Choose if helpful</option>${["Student", "Recent graduate", "Graduate", "Other"].map(value => `<option value="${value}" ${(profile.status || "") === value ? "selected" : ""}>${value}</option>`).join("")}</select></div><div class="field field--full"><label for="${prefix}-experience">Experience <span class="field-help">(optional)</span></label><textarea class="textarea" id="${prefix}-experience" name="${name("experience")}" placeholder="Paste a short, accurate summary of experience.">${escapeHtml(profile.experience || "")}</textarea></div><div class="field field--full"><label for="${prefix}-skills">Skills <span class="field-help">(optional)</span></label><input class="input" id="${prefix}-skills" name="${name("skills")}" value="${escapeAttr(profile.skills || "")}" placeholder="e.g. research, Excel, communication"></div><div class="field"><label for="${prefix}-type">Desired opportunity type <span class="field-help">(optional)</span></label><select class="select" id="${prefix}-type" name="${name("desiredType")}"><option value="">No preference set</option>${TYPES.map(value => `<option value="${value}" ${(profile.desiredType || "") === value ? "selected" : ""}>${value}</option>`).join("")}</select></div><div class="field"><label for="${prefix}-roles">Preferred roles / fields <span class="field-help">(optional)</span></label><input class="input" id="${prefix}-roles" name="${name("roles")}" value="${escapeAttr(profile.roles || "")}"></div><div class="field"><label for="${prefix}-locations">Preferred locations <span class="field-help">(optional)</span></label><input class="input" id="${prefix}-locations" name="${name("locations")}" value="${escapeAttr(profile.locations || "")}"></div><div class="field"><label for="${prefix}-workstyle">Work style / relocation <span class="field-help">(optional)</span></label><input class="input" id="${prefix}-workstyle" name="${name("workstyle")}" value="${escapeAttr(profile.workstyle || "")}" placeholder="e.g. remote, willing to relocate"></div><div class="field"><label for="${prefix}-availability">Availability to start <span class="field-help">(optional)</span></label><input class="input" id="${prefix}-availability" name="${name("availability")}" value="${escapeAttr(profile.availability || "")}"></div><div class="field"><label for="${prefix}-linkedin">LinkedIn URL <span class="field-help">(optional reference only)</span></label><input class="input" id="${prefix}-linkedin" name="${name("linkedin")}" type="url" value="${escapeAttr(profile.linkedin || "")}" placeholder="https://..."></div></div>`;
+  }
+
+  function renderBackgroundStep(draft) {
+    const profile = draft.profile;
+    const fixtureOptions = (window.SAAY_ASSESSMENT_FIXTURES || []).map(item => `<option value="${escapeAttr(item.id)}">${escapeHtml(item.label)}</option>`).join("");
+    const pdf = draft.cv.pdfAttempt || { status: "none" };
+    const pdfStatus = pdf.status === "selected-manual-paste-required" ? `<div class="pdf-status" role="status"><strong>${escapeHtml(pdf.name)}</strong><p>SAAY cannot read PDF text in this browser-only version. This file was not uploaded or saved. Paste selectable CV text below, or use profile/manual details.</p><button class="button button--text" type="button" data-action="clear-cv-pdf">Clear selected PDF</button></div>` : "";
+    return `<form id="background-step-form" novalidate><div class="wizard-card__header"><h2>Step 1: Your background</h2><p>Review structured details before they are used. SAAY only compares material you choose below.</p></div><div class="error-summary" id="wizard-errors" tabindex="-1"><p>Review the highlighted field.</p><ul></ul></div><fieldset class="assessment-sources"><legend>Evidence to use</legend><label><input type="checkbox" name="useProfile" ${draft.sourceSelection.profile ? "checked" : ""}> Use my saved profile</label><label><input type="checkbox" name="useCv" ${draft.sourceSelection.cvPaste ? "checked" : ""}> Paste CV text</label><label><input type="checkbox" name="useManual" ${draft.sourceSelection.manual ? "checked" : ""}> Add manual details for this review</label></fieldset><div class="profile-section"><div class="section-label"><h3>Reusable profile</h3><p>Saved only in this browser and reusable for future assessments.</p></div>${backgroundFields(profile)}<div class="form-actions form-actions--compact"><button type="button" class="button button--secondary button--small" data-action="clear-profile">Clear saved profile and CV</button></div></div><div class="cv-section ${draft.sourceSelection.cvPaste ? "" : "is-hidden"}" data-source-panel="cv"><div class="section-label"><h3>Pasted CV text</h3><p>Optional. Review it before using it as evidence. Maximum ${CV_LIMIT.toLocaleString()} characters.</p></div><div class="field"><label for="cv-text">CV text</label><textarea class="textarea cv-textarea" id="cv-text" name="cvText" maxlength="${CV_LIMIT}" placeholder="Paste selectable CV text here.">${escapeHtml(draft.cv.text || "")}</textarea><small><span id="cv-character-count">${String(draft.cv.text || "").length}</span> / ${CV_LIMIT.toLocaleString()} characters</small><span class="field-error" id="cv-text-error" data-wizard-error-for="cvText"></span></div><label class="check-label"><input type="checkbox" name="saveCv" ${draft.cv.saveToProfile ? "checked" : ""}> Save this pasted CV text to my browser-only profile</label><div class="field"><label for="cv-pdf">PDF CV <span class="field-help">(optional helper only)</span></label><input class="input" id="cv-pdf" name="cvPdf" type="file" accept="application/pdf,.pdf"><small>Selecting a PDF never uploads it. Automatic PDF text extraction is not available in this version.</small></div>${pdfStatus}</div><div class="manual-section ${draft.sourceSelection.manual ? "" : "is-hidden"}" data-source-panel="manual"><div class="section-label"><h3>Manual details for this review</h3><p>These details stay in this assessment unless you later copy them into your reusable profile.</p></div>${backgroundFields(draft.manual, "manual", "manual-")}</div><details class="fixture-loader"><summary>Load a fictional verification example</summary><p>For testing only. This replaces the current assessment draft and never creates a tracker record automatically.</p><label for="assessment-fixture">Example</label><select class="select" id="assessment-fixture"><option value="">Choose a fictional example</option>${fixtureOptions}</select><button type="button" class="button button--secondary button--small" data-action="load-assessment-fixture">Load example</button></details><p class="disclaimer"><strong>Local evidence review only.</strong> SAAY does not read LinkedIn, upload files, access external websites, or use AI. Add information only when it accurately describes your experience.</p><div class="form-actions"><button type="submit" class="button">Continue to job posting</button></div></form>`;
   }
 
   function renderJobStep(job) {
-    return `<form id="job-step-form" novalidate><div class="wizard-card__header"><h2>Step 2: Job posting</h2><p>Paste the role description and add the official link so your review stays grounded in the posting.</p></div><div class="error-summary" id="wizard-errors" tabindex="-1"><p>Review the highlighted fields.</p><ul></ul></div><div class="form-grid"><div class="field"><label for="assess-company">Company name <span class="required">*</span></label><input class="input" id="assess-company" name="company" value="${escapeAttr(job.company || "")}" aria-describedby="assess-company-error"><span class="field-error" id="assess-company-error" data-wizard-error-for="company"></span></div><div class="field"><label for="assess-title">Job title <span class="required">*</span></label><input class="input" id="assess-title" name="title" value="${escapeAttr(job.title || "")}" aria-describedby="assess-title-error"><span class="field-error" id="assess-title-error" data-wizard-error-for="title"></span></div><div class="field"><label for="assess-type">Opportunity type <span class="field-help">(optional)</span></label><select class="select" id="assess-type" name="opportunityType">${TYPES.map(type => `<option value="${type}" ${job.opportunityType === type ? "selected" : ""}>${type}</option>`).join("")}</select></div><div class="field"><label for="assess-url">Official opportunity link <span class="field-help">(optional)</span></label><input class="input" id="assess-url" name="officialUrl" type="url" value="${escapeAttr(job.officialUrl || "")}" placeholder="https://employer.example/role" aria-describedby="assess-url-error"><span class="field-error" id="assess-url-error" data-wizard-error-for="officialUrl"></span></div><div class="field field--full"><label for="assess-description">Pasted job description <span class="required">*</span></label><textarea class="textarea" id="assess-description" name="description" placeholder="Paste role requirements, responsibilities, and qualifications here." aria-describedby="assess-description-help assess-description-error">${escapeHtml(job.description || "")}</textarea><small id="assess-description-help">PDF extraction is not included. Use pasted text or manual notes instead.</small><span class="field-error" id="assess-description-error" data-wizard-error-for="description"></span></div></div><div class="form-actions"><button type="button" class="button button--secondary" data-action="assessment-back">Back</button><button type="submit" class="button">Continue to assessment</button></div></form>`;
+    return `<form id="job-step-form" novalidate><div class="wizard-card__header"><h2>Step 2: Job posting</h2><p>Confirm the details yourself. Only pasted job text is assessed; SAAY does not browse, read, or verify the URL.</p></div><div class="error-summary" id="wizard-errors" tabindex="-1"><p>Review the highlighted fields.</p><ul></ul></div><div class="form-grid"><div class="field"><label for="assess-company">Company name <span class="required">*</span></label><input class="input" id="assess-company" name="company" value="${escapeAttr(job.company || "")}" aria-describedby="assess-company-error"><span class="field-error" id="assess-company-error" data-wizard-error-for="company"></span></div><div class="field"><label for="assess-title">Job title <span class="required">*</span></label><input class="input" id="assess-title" name="title" value="${escapeAttr(job.title || "")}" aria-describedby="assess-title-error"><span class="field-error" id="assess-title-error" data-wizard-error-for="title"></span></div><div class="field"><label for="assess-type">Opportunity type <span class="field-help">(optional)</span></label><select class="select" id="assess-type" name="opportunityType">${TYPES.map(type => `<option value="${type}" ${job.opportunityType === type ? "selected" : ""}>${type}</option>`).join("")}</select></div><div class="field"><label for="assess-url">Official opportunity link <span class="field-help">(optional)</span></label><input class="input" id="assess-url" name="officialUrl" type="url" value="${escapeAttr(job.officialUrl || "")}" placeholder="https://employer.example/role" aria-describedby="assess-url-error"><small>Stored for you to open later; it is not retrieved or verified.</small><span class="field-error" id="assess-url-error" data-wizard-error-for="officialUrl"></span></div><div class="field field--full"><label for="assess-description">Pasted job description <span class="required">*</span></label><textarea class="textarea" id="assess-description" name="description" placeholder="Paste role requirements, responsibilities, and qualifications here." aria-describedby="assess-description-help assess-description-error">${escapeHtml(job.description || "")}</textarea><small id="assess-description-help">SAAY compares this pasted text locally using transparent rule and keyword checks. It does not fetch the URL or use AI.</small><span class="field-error" id="assess-description-error" data-wizard-error-for="description"></span></div></div><div class="form-actions"><button type="button" class="button button--secondary" data-action="assessment-back">Back</button><button type="submit" class="button">Run local assessment</button></div></form>`;
+  }
+
+  function evidenceList(items, render) {
+    return items.length ? `<div class="evidence-list">${items.map(render).join("")}</div>` : "";
+  }
+
+  function renderEvidenceQuotes(items = []) {
+    return items.map(item => `<p class="evidence-quote"><strong>${escapeHtml(item.source)}:</strong> “${escapeHtml(item.quote)}”</p>`).join("");
   }
 
   function renderAssessmentStep(draft) {
-    const result = draft.result || buildAssessmentResult(draft.job, draft.profile);
-    draft.result = result;
-    const { findings } = result.assessment;
-    return `<div class="wizard-card__header"><h2>Step 3: Your assessment</h2><p>These findings use only what you entered. They help you decide what to verify—not whether you will be hired.</p></div><div class="assessment-result" aria-live="polite"><div class="finding"><h3>Relevant matches</h3>${findings.matches.length ? `<ul>${findings.matches.map(item => `<li>${escapeHtml(item)} appears in both your skills and the description.</li>`).join("")}</ul>` : "<p>No direct skill match was found from the skills you entered. The wording may differ, or you may need to review the role yourself.</p>"}</div><div class="finding"><h3>Mandatory or eligibility conditions</h3>${findings.mandatoryLines.length ? `<ul>${findings.mandatoryLines.map(line => `<li>${escapeHtml(line)}</li>`).join("")}</ul>` : "<p>No explicit mandatory condition was identified. Read the full description and verify with the employer.</p>"}</div><div class="finding"><h3>Preferred qualifications</h3>${findings.preferredLines.length ? `<ul>${findings.preferredLines.map(line => `<li>${escapeHtml(line)}</li>`).join("")}</ul>` : "<p>No preferred qualification was identified from the pasted text.</p>"}</div><div class="finding"><h3>Preferences or details to verify</h3>${[...findings.preferenceNotes, ...findings.unknowns].length ? `<ul>${[...findings.preferenceNotes, ...findings.unknowns].map(line => `<li>${escapeHtml(line)}</li>`).join("")}</ul>` : "<p>Your profile has useful detail, but you should still verify location, eligibility, and timelines from the official posting.</p>"}</div><p class="disclaimer"><strong>Your review, not a prediction.</strong> Unknown information remains unknown. A missing preferred skill does not automatically exclude you.</p><div class="form-actions"><button type="button" class="button button--secondary" data-action="assessment-back">Back</button><button type="button" class="button button--secondary" data-action="edit-background">Edit your background</button>${draft.job.officialUrl ? '<button type="button" class="button button--secondary" data-action="open-assessment-link">Open employer website</button>' : ""}<button type="button" class="button" data-action="save-assessed">Save to tracker</button></div></div>`;
-  }
-
-  function buildAssessmentResult(job, profile) {
-    const description = (job.description || "").toLowerCase();
-    const skills = (profile.skills || "").split(/[;,]/).map(value => value.trim()).filter(Boolean);
-    const matches = skills.filter(skill => description.includes(skill.toLowerCase()));
-    const mandatoryLines = extractRelevantLines(job.description || "", /\b(must|required|eligib|minimum|mandatory)\b/i);
-    const preferredLines = extractRelevantLines(job.description || "", /\b(preferred|nice to have|bonus|plus)\b/i);
-    const unknowns = [];
-    if (!profile.education) unknowns.push("Education or field of study is not set in your reviewed profile.");
-    if (!profile.status) unknowns.push("Student or graduate status is not set in your reviewed profile.");
-    if (!profile.availability) unknowns.push("Availability to start is not set in your reviewed profile.");
-    const preferenceNotes = [];
-    if (profile.desiredType && profile.desiredType !== job.opportunityType) preferenceNotes.push(`Your desired type is ${profile.desiredType}, while this role is ${job.opportunityType}.`);
-    if (profile.locations && !description.includes(profile.locations.toLowerCase())) preferenceNotes.push("The description does not clearly confirm your preferred location(s)—verify this with the employer.");
-    return { ...job, assessment: { profile, description: job.description, findings: { matches, mandatoryLines, preferredLines, unknowns, preferenceNotes }, createdAt: new Date().toISOString() } };
+    if (draft.runStatus === "processing") return `<div class="processing-state" role="status" aria-live="polite" aria-busy="true"><h2>Reviewing your evidence</h2><p>SAAY is comparing the profile and pasted text you selected using local rules and keywords. It is not using AI or an external service.</p></div>`;
+    if (draft.runStatus === "error") return `<div class="processing-state processing-state--error" role="alert"><h2>Assessment could not run</h2><p>${escapeHtml(draft.errorMessage || "Review your information and try again.")}</p><div class="form-actions"><button type="button" class="button button--secondary" data-action="assessment-back">Back to job posting</button></div></div>`;
+    if (draft.runStatus !== "complete" || !draft.result) return `<div class="processing-state"><h2>Assessment not ready</h2><p>Return to the job posting, confirm the required information, and run the local assessment.</p><div class="form-actions"><button type="button" class="button button--secondary" data-action="assessment-back">Back to job posting</button></div></div>`;
+    const findings = draft.result.findings;
+    const requiredMissing = findings.missingEvidence.filter(item => item.requirementLevel === "required");
+    const preferredMissing = findings.missingEvidence.filter(item => item.requirementLevel === "preferred");
+    const unknownMissing = findings.missingEvidence.filter(item => item.requirementLevel === "unclassified");
+    const mismatches = findings.eligibility.filter(item => item.status === "possible-mismatch");
+    const verified = findings.eligibility.filter(item => item.status === "confirmed");
+    return `<div class="wizard-card__header"><h2>Step 3: Your assessment</h2><p>Evidence-based local keyword and rule matching. A missing keyword may be a wording gap, not proof that you lack the skill.</p></div><div class="assessment-result" aria-live="polite"><section class="finding"><h3>Relevant matches</h3>${evidenceList(findings.matches, item => `<article class="evidence-card"><h4>${escapeHtml(item.keyword)} <span>${escapeHtml(item.requirementLevel)}</span></h4>${renderEvidenceQuotes(item.jobEvidence)}${renderEvidenceQuotes(item.candidateEvidence)}</article>`) || "<p>No direct keyword evidence was found in the selected material. You can add truthful wording and reassess.</p>"}</section><section class="finding"><h3>Requirements not evidenced in the CV/profile</h3><p>A wording gap means your selected material does not describe a keyword. A qualification-evidence gap means the posting asks for it but the selected material does not currently support it. Neither proves you lack it.</p>${requiredMissing.length ? `<h4>Mandatory requirements</h4>${evidenceList(requiredMissing, item => `<article class="evidence-card"><h5>${escapeHtml(item.keyword)}</h5>${renderEvidenceQuotes(item.jobEvidence)}<p>${escapeHtml(item.message)}</p></article>`)}` : ""}${preferredMissing.length ? `<h4>Preferred qualifications</h4>${evidenceList(preferredMissing, item => `<article class="evidence-card"><h5>${escapeHtml(item.keyword)}</h5>${renderEvidenceQuotes(item.jobEvidence)}<p>${escapeHtml(item.message)}</p></article>`)}` : ""}${unknownMissing.length ? `<h4>Other job-ad keywords</h4>${evidenceList(unknownMissing, item => `<article class="evidence-card"><h5>${escapeHtml(item.keyword)}</h5>${renderEvidenceQuotes(item.jobEvidence)}<p>${escapeHtml(item.message)}</p></article>`)}` : ""}${!findings.missingEvidence.length ? "<p>All recognized job keywords had supporting evidence in the material you selected.</p>" : ""}</section><section class="finding"><h3>Explicit eligibility mismatches</h3>${mismatches.length ? evidenceList(mismatches, item => `<article class="evidence-card evidence-card--attention"><h4>${escapeHtml(item.condition)}</h4>${renderEvidenceQuotes(item.jobEvidence)}${renderEvidenceQuotes(item.candidateEvidence)}<p>${escapeHtml(item.explanation)}</p></article>`) : "<p>No direct contradiction was found between explicit job conditions and the details you entered. This is not a confirmation of eligibility.</p>"}${verified.length ? `<p class="assessment-note">Confirmed from entered details: ${verified.map(item => escapeHtml(item.condition)).join(", ")}.</p>` : ""}</section><section class="finding"><h3>Details that need verification</h3>${evidenceList(findings.verification, item => `<article class="evidence-card"><h4>${escapeHtml(item.topic)}</h4>${renderEvidenceQuotes(item.jobEvidence)}<p>${escapeHtml(item.reason)}</p></article>`)}</section><p class="disclaimer"><strong>Your review, not a prediction.</strong> This local rule/keyword comparison uses only information you entered. It does not assess fit completely, recommend applying, predict hiring, or confirm that a posting is open.</p><div class="form-actions"><button type="button" class="button button--secondary" data-action="assessment-back">Back</button><button type="button" class="button button--secondary" data-action="edit-background">Edit your background</button>${draft.job.officialUrl ? '<button type="button" class="button button--secondary" data-action="open-assessment-link">Open employer website</button>' : ""}<button type="button" class="button" data-action="save-assessed">${draft.targetMode === "reassess" ? "Update assessment" : "Save to tracker"}</button></div></div>`;
   }
 
   function openDialog(content, label) {
@@ -459,10 +594,20 @@
     return `<div class="modal-header"><h2>${edit ? "Edit opportunity" : "Add an opportunity"}</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="Close dialog">×</button></div><div class="modal-body"><form id="opportunity-form" data-record-id="${record ? record.id : ""}" novalidate><div class="error-summary" id="form-errors" tabindex="-1"><p>Review the highlighted fields.</p><ul></ul></div><div class="form-grid"><div class="field"><label for="company">Company name <span class="required">*</span></label><input class="input" id="company" name="company" required value="${escapeAttr(current.company || "")}"><span class="field-error" data-error-for="company"></span></div><div class="field"><label for="title">Job title <span class="required">*</span></label><input class="input" id="title" name="title" required value="${escapeAttr(current.title || "")}"><span class="field-error" data-error-for="title"></span></div><div class="field"><label for="opportunityType">Opportunity type <span class="required">*</span></label><select class="select" id="opportunityType" name="opportunityType">${TYPES.map(type => `<option value="${type}" ${current.opportunityType === type ? "selected" : ""}>${type}</option>`).join("")}</select></div><div class="field"><label for="stage">Application stage <span class="required">*</span></label><select class="select" id="stage" name="stage">${STAGES.map(stage => `<option value="${stage}" ${current.stage === stage ? "selected" : ""}>${stage}</option>`).join("")}</select><small>Changing the stage resets its waiting time from today.</small></div><div class="field field--full"><label for="officialUrl">Official opportunity link</label><input class="input" id="officialUrl" name="officialUrl" type="url" value="${escapeAttr(current.officialUrl || "")}" placeholder="https://employer.example/role"><small>SAAY opens this link but never submits an application for you.</small><span class="field-error" data-error-for="officialUrl"></span></div><div class="field"><label for="applicationDate">Application date</label><input class="input" id="applicationDate" name="applicationDate" type="date" value="${escapeAttr(current.applicationDate || "")}"><small>Stored separately from the stage change date.</small></div><div class="field"><label for="stageChangedAt">Stage changed on</label><input class="input" id="stageChangedAt" name="stageChangedAt" type="date" value="${escapeAttr(current.stageChangedAt || isoDate())}" ${edit ? "readonly" : ""}><small>${edit ? "Updated automatically when you change the stage." : "Set this for a historical record."}</small></div><div class="field"><label for="closingDate">Closing date <span class="field-help">(optional)</span></label><input class="input" id="closingDate" name="closingDate" type="date" value="${escapeAttr(current.closingDate || "")}"></div><div class="field"><label for="interviewDate">Interview date <span class="field-help">(optional)</span></label><input class="input" id="interviewDate" name="interviewDate" type="date" value="${escapeAttr(current.interviewDate || "")}"></div><div class="field"><label for="expectedResponseDate">Expected response date <span class="field-help">(optional)</span></label><input class="input" id="expectedResponseDate" name="expectedResponseDate" type="date" value="${escapeAttr(current.expectedResponseDate || "")}"></div><div class="field"><label for="nextReminderDate">Next reminder <span class="field-help">(optional)</span></label><input class="input" id="nextReminderDate" name="nextReminderDate" type="date" value="${escapeAttr(current.nextReminderDate || "")}"></div><div class="field field--full"><label for="notes">Notes <span class="field-help">(optional)</span></label><textarea class="textarea" id="notes" name="notes" placeholder="Keep a short, useful note for yourself.">${escapeHtml(current.notes || "")}</textarea></div></div><div class="form-actions">${edit ? `<button type="button" class="button button--danger" data-action="confirm-delete" data-id="${record.id}">Delete</button>` : ""}<button type="button" class="button button--secondary" data-action="close-dialog">Cancel</button><button type="submit" class="button">${edit ? "Save changes" : "Save opportunity"}</button></div></form></div>`;
   }
 
+  function assessmentSummary(record) {
+    const assessment = record.assessment;
+    if (!assessment) return "";
+    if (assessment.schemaVersion !== 2) return `<section class="detail-section"><h3>Assessment</h3><p>This opportunity has an earlier assessment format. Reassess it to see current evidence-based results.</p><div class="form-actions"><button type="button" class="button button--secondary" data-action="reassess-record" data-id="${record.id}">Reassess opportunity</button></div></section>`;
+    const findings = assessment.findings || {};
+    const mismatchCount = (findings.eligibility || []).filter(item => item.status === "possible-mismatch").length;
+    const stale = assessmentIsStale(assessment);
+    return `<section class="detail-section"><h3>Assessment summary</h3><p>${stale ? "Your saved profile changed after this review. Reassess to refresh profile-based evidence." : `Last assessed ${formatDate(assessment.assessedAt?.slice(0, 10))}.`}</p><div class="detail-grid"><div class="detail-data"><span>Matches</span><strong>${(findings.matches || []).length}</strong></div><div class="detail-data"><span>Not evidenced</span><strong>${(findings.missingEvidence || []).length}</strong></div><div class="detail-data"><span>Verify</span><strong>${(findings.verification || []).length + mismatchCount}</strong></div></div><div class="form-actions"><button type="button" class="button button--secondary" data-action="view-assessment" data-id="${record.id}">View assessment</button><button type="button" class="button" data-action="reassess-record" data-id="${record.id}">Reassess opportunity</button></div></section>`;
+  }
+
   function recordDetail(record) {
     const attention = isAttention(record);
     const history = record.followUpHistory.length ? record.followUpHistory.map(item => `<li class="history-item"><strong>Follow-up completed ${formatDate(item.completedAt)}</strong>${item.note ? `<br>${escapeHtml(item.note)}` : ""}</li>`).join("") : "<li class=\"history-item\">No completed follow-ups yet.</li>";
-    return `<div class="modal-header"><h2>${escapeHtml(record.title)}</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="Close dialog">×</button></div><div class="modal-body"><section class="detail-section"><div class="detail-header"><div><p class="record-company">${escapeHtml(record.company)}</p></div><div>${stageBadge(record.stage)} ${demoBadge(record)}</div></div>${attention ? `<p class="attention-message"><span class="attention-dot" aria-hidden="true"></span>${escapeHtml(attentionText(record))}</p>` : ""}<div class="detail-grid" style="margin-top:14px"><div class="detail-data"><span>Type</span><strong>${escapeHtml(record.opportunityType)}</strong></div><div class="detail-data"><span>Application date</span><strong>${formatDate(record.applicationDate)}</strong></div><div class="detail-data"><span>Stage changed</span><strong>${formatDate(record.stageChangedAt)}</strong></div></div></section><section class="detail-section"><h3>Suggested next step</h3><p class="guidance">${escapeHtml(stageAdvice[record.stage])}</p></section>${record.notes ? `<section class="detail-section"><h3>Your notes</h3><p>${escapeHtml(record.notes)}</p></section>` : ""}<section class="detail-section"><h3>Dates & reminders</h3><div class="detail-grid"><div class="detail-data"><span>Closing</span><strong>${dateValueLabel(record.closingDate)}</strong></div><div class="detail-data"><span>Interview</span><strong>${dateValueLabel(record.interviewDate)}</strong></div><div class="detail-data"><span>Next reminder</span><strong>${dateValueLabel(record.nextReminderDate)}</strong></div></div></section><section class="detail-section"><h3>Follow-up history</h3><p>Complete a follow-up to keep it out of unfinished tasks. This only records your action; SAAY never sends anything.</p><form id="followup-form" class="followup-form" data-id="${record.id}"><label class="sr-only" for="followup-note">Follow-up note</label><input class="input" id="followup-note" name="note" placeholder="Optional note, e.g. sent a polite check-in"><button class="button button--small" type="submit">Mark follow-up complete</button></form><ul class="followup-history">${history}</ul>${attention ? `<div style="margin-top:14px"><button type="button" class="button button--secondary button--small" data-action="open-copy" data-id="${record.id}">Copy follow-up message</button></div>` : ""}</section><section class="detail-section"><div class="form-actions">${record.officialUrl ? `<button type="button" class="button" data-action="apply-link" data-id="${record.id}">Apply on employer website</button>` : ""}<button type="button" class="button button--secondary" data-action="edit-record" data-id="${record.id}">Edit opportunity</button></div></section></div>`;
+    return `<div class="modal-header"><h2>${escapeHtml(record.title)}</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="Close dialog">×</button></div><div class="modal-body"><section class="detail-section"><div class="detail-header"><div><p class="record-company">${escapeHtml(record.company)}</p></div><div>${stageBadge(record.stage)} ${demoBadge(record)} ${assessmentBadge(record)}</div></div>${attention ? `<p class="attention-message"><span class="attention-dot" aria-hidden="true"></span>${escapeHtml(attentionText(record))}</p>` : ""}<div class="detail-grid" style="margin-top:14px"><div class="detail-data"><span>Type</span><strong>${escapeHtml(record.opportunityType)}</strong></div><div class="detail-data"><span>Application date</span><strong>${formatDate(record.applicationDate)}</strong></div><div class="detail-data"><span>Stage changed</span><strong>${formatDate(record.stageChangedAt)}</strong></div></div></section>${assessmentSummary(record)}<section class="detail-section"><h3>Suggested next step</h3><p class="guidance">${escapeHtml(stageAdvice[record.stage])}</p></section>${record.notes ? `<section class="detail-section"><h3>Your notes</h3><p>${escapeHtml(record.notes)}</p></section>` : ""}<section class="detail-section"><h3>Dates & reminders</h3><div class="detail-grid"><div class="detail-data"><span>Closing</span><strong>${dateValueLabel(record.closingDate)}</strong></div><div class="detail-data"><span>Interview</span><strong>${dateValueLabel(record.interviewDate)}</strong></div><div class="detail-data"><span>Next reminder</span><strong>${dateValueLabel(record.nextReminderDate)}</strong></div></div></section><section class="detail-section"><h3>Follow-up history</h3><p>Complete a follow-up to keep it out of unfinished tasks. This only records your action; SAAY never sends anything.</p><form id="followup-form" class="followup-form" data-id="${record.id}"><label class="sr-only" for="followup-note">Follow-up note</label><input class="input" id="followup-note" name="note" placeholder="Optional note, e.g. sent a polite check-in"><button class="button button--small" type="submit">Mark follow-up complete</button></form><ul class="followup-history">${history}</ul>${attention ? `<div style="margin-top:14px"><button type="button" class="button button--secondary button--small" data-action="open-copy" data-id="${record.id}">Copy follow-up message</button></div>` : ""}</section><section class="detail-section"><div class="form-actions">${record.officialUrl ? `<button type="button" class="button" data-action="apply-link" data-id="${record.id}">Apply on employer website</button>` : ""}<button type="button" class="button button--secondary" data-action="edit-record" data-id="${record.id}">Edit opportunity</button></div></section></div>`;
   }
 
   function openCopyDialog(record) {
@@ -529,7 +674,7 @@
     closeDialog();
     renderApp();
     showToast(existing ? "Opportunity updated." : "Opportunity saved.");
-    if (!existing && !localStorage.getItem(SHARED_KEY) && !updated.isDemo) showSharePrompt();
+    if (!existing && !repository.shareSeen() && !updated.isDemo) showSharePrompt();
   }
 
   function validateWizardProfile(profile) {
@@ -577,89 +722,178 @@
     });
     if (summary) {
       summary.classList.add("is-visible");
-      summary.querySelector("ul").innerHTML = Object.entries(errors).map(([name, message]) => `<li><a href="#${name === "description" ? "assess-description" : name === "officialUrl" ? "assess-url" : name === "linkedin" ? "profile-linkedin" : `assess-${name}`} ">${escapeHtml(message)}</a></li>`).join("");
+      summary.querySelector("ul").innerHTML = Object.entries(errors).map(([name, message]) => `<li><a href="#${name === "description" ? "assess-description" : name === "officialUrl" ? "assess-url" : name === "linkedin" ? "profile-linkedin" : name === "cvText" ? "cv-text" : `assess-${name}`}">${escapeHtml(message)}</a></li>`).join("");
       summary.focus();
     }
     return true;
   }
 
-  function startAssessment() {
-    state.assessmentDraft = blankAssessmentDraft();
+  function startAssessment(recordId = "") {
+    const record = recordId ? getRecord(recordId) : null;
+    state.assessmentDraft = blankAssessmentDraft(record);
     state.assessmentStep = 1;
+    repository.clearDraft();
     setView("assessment");
-    announce("Step 1 of 3: Your background.");
+    announce(record ? "Step 1 of 3: Reassess your background." : "Step 1 of 3: Your background.");
   }
 
   function moveAssessmentBack() {
+    const draft = ensureAssessmentDraft();
+    if (draft.runStatus === "processing") return;
     if (state.assessmentStep <= 1) return;
     state.assessmentStep -= 1;
+    persistAssessmentDraft();
     renderApp();
     focusMainTitle();
     announce(`Step ${state.assessmentStep} of 3.`);
   }
 
-  function saveBackgroundStep(form) {
-    const profile = Object.fromEntries(new FormData(form).entries());
-    if (showWizardErrors(validateWizardProfile(profile))) return;
+  function readNamedFields(form, names) {
+    const values = Object.fromEntries(new FormData(form).entries());
+    return names.reduce((result, name) => ({ ...result, [name]: values[name] || "" }), {});
+  }
+
+  function captureBackgroundDraft(form = document.getElementById("background-step-form")) {
     const draft = ensureAssessmentDraft();
-    draft.profile = profile;
+    if (!form) return draft;
+    const values = new FormData(form);
+    const profile = readNamedFields(form, ["education", "status", "experience", "skills", "desiredType", "roles", "locations", "workstyle", "availability", "linkedin"]);
+    draft.profile = normalizeProfile({ ...profile, updatedAt: draft.profile.updatedAt || "" });
+    draft.sourceSelection = {
+      profile: values.has("useProfile"),
+      cvPaste: values.has("useCv"),
+      manual: values.has("useManual")
+    };
+    draft.cv = {
+      ...draft.cv,
+      text: String(values.get("cvText") || ""),
+      saveToProfile: values.has("saveCv")
+    };
+    const manualFields = form.querySelectorAll(".manual-section [name]");
+    if (manualFields.length) {
+      draft.manual = Array.from(manualFields).reduce(
+        (result, field) => ({ ...result, [field.name.replace(/^manual-/, "")]: field.value || "" }),
+        blankManualDetails()
+      );
+    }
+    if (draft.result && ENGINE && draft.result.inputFingerprint !== ENGINE.createInputFingerprint(draft)) draft.runStatus = "stale";
+    return draft;
+  }
+
+  function saveBackgroundStep(form) {
+    const draft = captureBackgroundDraft(form);
+    if (showWizardErrors(validateWizardProfile(draft.profile))) return;
+    if (draft.cv.text.length > CV_LIMIT) {
+      showWizardErrors({ cvText: `Keep pasted CV text under ${CV_LIMIT.toLocaleString()} characters.` });
+      return;
+    }
+    const saved = repository.saveProfile({
+      ...draft.profile,
+      cv: draft.cv.saveToProfile
+        ? { text: draft.cv.text, updatedAt: new Date().toISOString() }
+        : repository.profile().cv
+    });
+    draft.profile = saved;
     draft.result = null;
-    repository.saveProfile(profile);
+    draft.runStatus = "idle";
     state.assessmentStep = 2;
+    persistAssessmentDraft();
     renderApp();
     focusMainTitle();
     announce("Step 2 of 3: Job posting.");
   }
 
-  function saveJobStep(form) {
-    const job = Object.fromEntries(new FormData(form).entries());
-    if (showWizardErrors(validateWizardJob(job))) return;
+  function captureJobDraft(form = document.getElementById("job-step-form")) {
     const draft = ensureAssessmentDraft();
-    draft.job = job;
-    draft.result = buildAssessmentResult(job, draft.profile);
-    state.assessmentStep = 3;
-    renderApp();
-    focusMainTitle();
-    announce("Step 3 of 3: Your assessment is ready.");
+    if (!form) return draft;
+    draft.job = { ...draft.job, ...Object.fromEntries(new FormData(form).entries()) };
+    if (draft.result && ENGINE && draft.result.inputFingerprint !== ENGINE.createInputFingerprint(draft)) draft.runStatus = "stale";
+    return draft;
   }
 
-  function renderAssessmentResult(data) {
-    const draft = ensureAssessmentDraft();
-    draft.job = { ...draft.job, ...data };
-    draft.result = buildAssessmentResult(draft.job, draft.profile);
+  function captureCurrentAssessmentForm() {
+    if (state.assessmentStep === 1) return captureBackgroundDraft();
+    if (state.assessmentStep === 2) return captureJobDraft();
+    return ensureAssessmentDraft();
+  }
+
+  function saveJobStep(form) {
+    const draft = captureJobDraft(form);
+    const job = draft.job;
+    if (showWizardErrors(validateWizardJob(job))) return;
+    draft.result = null;
+    draft.runStatus = "processing";
+    const runId = draft.runId + 1;
+    draft.runId = runId;
     state.assessmentStep = 3;
+    repository.clearDraft();
     renderApp();
-    announce("Opportunity review is ready.");
+    focusMainTitle();
+    announce("Reviewing your entered evidence locally.");
+    window.setTimeout(() => {
+      const current = state.assessmentDraft;
+      if (!current || current.runId !== runId || current.runStatus !== "processing") return;
+      try {
+        if (!ENGINE) throw new Error("The local assessment engine was not available.");
+        current.result = ENGINE.assess(current);
+        current.inputFingerprint = current.result.inputFingerprint;
+        current.runStatus = "complete";
+        renderApp();
+        focusMainTitle();
+        announce("Step 3 of 3: Your assessment is ready.");
+      } catch (error) {
+        current.runStatus = "error";
+        current.errorMessage = "SAAY could not analyze the entered text. Your information is still here—review it and try again.";
+        renderApp();
+        announce("Assessment could not run.");
+      }
+    }, 250);
   }
 
   function assessmentOfficialUrl() {
-    return state.assessmentDraft?.job?.officialUrl || state.assessmentDraft?.officialUrl || "";
-  }
-
-  function extractRelevantLines(text, pattern) {
-    return text.split(/\n|(?<=[.!?])\s+/).map(line => line.trim()).filter(line => line && pattern.test(line)).slice(0, 4);
+    return state.assessmentDraft?.job?.officialUrl || "";
   }
 
   function saveAssessedOpportunity() {
     const draft = state.assessmentDraft;
-    if (!draft?.job || !draft?.result) return;
+    if (!draft?.job || draft.runStatus !== "complete" || !draft.result || isDraftStale(draft)) {
+      showToast("Run the assessment again after any changes before saving.");
+      return;
+    }
     const now = new Date().toISOString();
+    const existing = draft.targetRecordId ? getRecord(draft.targetRecordId) : null;
+    const identityChanged = existing && ["company", "title", "opportunityType", "officialUrl"].some(key => String(existing[key] || "") !== String(draft.job[key] || ""));
+    const updateIdentity = !identityChanged || window.confirm("Update this saved opportunity’s company, title, type, or official link with the reviewed posting details?");
+    if (identityChanged && !updateIdentity) showToast("Assessment updated without changing the saved opportunity details.");
     const record = normalizeOpportunity({
-      id: uid("assessed"), isDemo: false, company: draft.job.company, title: draft.job.title, opportunityType: draft.job.opportunityType,
-      officialUrl: draft.job.officialUrl, notes: "Saved from a SAAY opportunity review.", stage: "Saved", applicationDate: "", stageChangedAt: isoDate(),
-      followUpHistory: [], assessment: draft.result.assessment, createdAt: now, updatedAt: now
+      ...(existing || {}),
+      id: existing?.id || uid("assessed"),
+      isDemo: existing?.isDemo || false,
+      company: !existing || !identityChanged || updateIdentity ? draft.job.company : existing.company,
+      title: !existing || !identityChanged || updateIdentity ? draft.job.title : existing.title,
+      opportunityType: !existing || !identityChanged || updateIdentity ? draft.job.opportunityType : existing.opportunityType,
+      officialUrl: !existing || !identityChanged || updateIdentity ? draft.job.officialUrl : existing.officialUrl,
+      notes: existing?.notes || "Saved from a SAAY opportunity review.",
+      stage: existing?.stage || "Saved",
+      applicationDate: existing?.applicationDate || "",
+      stageChangedAt: existing?.stageChangedAt || isoDate(),
+      followUpHistory: existing?.followUpHistory || [],
+      assessment: draft.result,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now
     });
-    saveOpportunities([...state.opportunities, record]);
+    saveOpportunities(existing ? state.opportunities.map(item => item.id === existing.id ? record : item) : [...state.opportunities, record]);
     state.assessmentDraft = null;
     state.assessmentStep = 1;
+    repository.clearDraft();
     state.view = "tracker";
     renderApp();
-    showToast("Assessed opportunity saved to your tracker.");
-    if (!localStorage.getItem(SHARED_KEY)) showSharePrompt();
+    showToast(existing ? "Assessment updated in your tracker." : "Assessed opportunity saved to your tracker.");
+    if (!existing && !repository.shareSeen()) showSharePrompt();
   }
 
   function showSharePrompt() {
-    if (localStorage.getItem(SHARED_KEY) || document.querySelector(".share-prompt")) return;
+    if (repository.shareSeen() || document.querySelector(".share-prompt")) return;
     const prompt = document.createElement("aside");
     prompt.className = "share-prompt";
     prompt.setAttribute("aria-label", "Optional sharing prompt");
@@ -683,7 +917,7 @@
   }
 
   function dismissShare() {
-    localStorage.setItem(SHARED_KEY, "true");
+    repository.setShareSeen();
     document.querySelector(".share-prompt")?.remove();
   }
 
@@ -750,12 +984,23 @@
     const id = trigger.dataset.id;
     if (action === "open-app") { state.view = "dashboard"; renderApp(); }
     if (action === "go-landing") { event.preventDefault(); state.view = "landing"; state.assessmentDraft = null; state.assessmentStep = 1; renderLanding(); }
-    if (action === "navigate") setView(trigger.dataset.view);
+    if (action === "navigate") {
+      if (state.view === "assessment") captureCurrentAssessmentForm();
+      setView(trigger.dataset.view);
+    }
     if (action === "start-assessment") startAssessment();
-    if (action === "open-tracker") setView("tracker");
+    if (action === "reassess-record") { const record = getRecord(id); if (record) { closeDialog(); startAssessment(record.id); } }
+    if (action === "view-assessment") { const record = getRecord(id); if (record) { closeDialog(); state.assessmentDraft = blankAssessmentDraft(record); state.assessmentDraft.result = record.assessment; state.assessmentDraft.runStatus = record.assessment?.schemaVersion === 2 ? "complete" : "idle"; state.assessmentStep = 3; setView("assessment"); } }
+    if (action === "open-tracker") {
+      if (state.view === "assessment") captureCurrentAssessmentForm();
+      setView("tracker");
+    }
     if (action === "try-demo") { state.opportunities = repository.loadSamples(state.opportunities); state.view = "dashboard"; renderApp(); showToast("Fictional example data loaded."); }
     if (action === "assessment-back") moveAssessmentBack();
-    if (action === "edit-background") { state.assessmentStep = 1; renderApp(); focusMainTitle(); announce("Step 1 of 3: Your background."); }
+    if (action === "edit-background") { state.assessmentStep = 1; state.assessmentDraft.runStatus = "stale"; renderApp(); focusMainTitle(); announce("Step 1 of 3: Your background."); }
+    if (action === "clear-cv-pdf") { const draft = captureBackgroundDraft(); draft.cv.pdfAttempt = { status: "none" }; renderApp(); showToast("Selected PDF cleared. It was never uploaded or saved."); }
+    if (action === "clear-profile") { if (window.confirm("Clear your saved profile and pasted CV text from this browser? Your tracker records will remain.")) { const draft = captureBackgroundDraft(); draft.profile = repository.clearProfile(); draft.cv = { ...draft.cv, text: "", saveToProfile: false }; renderApp(); showToast("Saved profile and CV text cleared from this browser."); } }
+    if (action === "load-assessment-fixture") { const fixtureId = document.getElementById("assessment-fixture")?.value; const fixture = (window.SAAY_ASSESSMENT_FIXTURES || []).find(item => item.id === fixtureId); if (fixture) { state.assessmentDraft = { ...blankAssessmentDraft(), profile: normalizeProfile(fixture.profile), sourceSelection: { ...fixture.sourceSelection }, cv: { ...fixture.cv, saveToProfile: false }, manual: { ...fixture.manual }, job: { ...fixture.job }, fixtureLabel: fixture.label }; state.assessmentStep = 1; renderApp(); showToast("Fictional verification example loaded into this assessment only."); } }
     if (action === "add-opportunity") openDialog(opportunityForm(), "Add opportunity");
     if (action === "close-dialog") closeDialog();
     if (action === "view-record") { const record = getRecord(id); if (record) openDialog(recordDetail(record), "Opportunity details"); }
@@ -774,9 +1019,28 @@
 
   document.addEventListener("input", event => {
     if (event.target.dataset.filter === "query") { state.query = event.target.value; renderApp(); document.getElementById("search-records")?.focus(); document.getElementById("search-records")?.setSelectionRange(state.query.length, state.query.length); }
+    if (event.target.id === "cv-text") document.getElementById("cv-character-count")?.replaceChildren(String(event.target.value.length));
   });
 
   document.addEventListener("change", event => {
+    if (event.target.id === "cv-pdf") {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const draft = captureBackgroundDraft();
+      const looksLikePdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      if (!looksLikePdf) { showToast("Choose a PDF file, or paste CV text instead."); event.target.value = ""; return; }
+      if (file.size > PDF_LIMIT) { showToast("Choose a PDF smaller than 8 MB, or paste CV text instead."); event.target.value = ""; return; }
+      draft.cv.pdfAttempt = { name: file.name, size: file.size, type: file.type || "application/pdf", status: "selected-manual-paste-required" };
+      renderApp();
+      showToast("PDF selected locally. SAAY did not upload or read its text.");
+      return;
+    }
+    if (["useProfile", "useCv", "useManual"].includes(event.target.name)) {
+      const draft = captureBackgroundDraft();
+      document.querySelector('[data-source-panel="cv"]')?.classList.toggle("is-hidden", !draft.sourceSelection.cvPaste);
+      document.querySelector('[data-source-panel="manual"]')?.classList.toggle("is-hidden", !draft.sourceSelection.manual);
+      return;
+    }
     const filter = event.target.dataset.filter;
     if (!filter || filter === "query") return;
     if (filter === "stage") state.stageFilter = event.target.value;

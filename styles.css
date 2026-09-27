@@ -229,6 +229,38 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .wizard-card__header h2 { margin: 0; font-size: 1.22rem; letter-spacing: -.025em; }
 .wizard-card__header p { margin: 7px 0 0; color: var(--muted); font-size: .92rem; }
 .assessment-result { margin-top: 4px; }
+.assessment-context, .fixture-label { margin: 12px 0 0; padding: 10px 12px; border-radius: 9px; color: #25424b; background: var(--brand-soft); font-size: .88rem; }
+.fixture-label { border: 1px solid #e8d697; color: #6c4a10; background: #fff9e9; }
+.assessment-sources { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 0 0 22px; padding: 15px; border: 1px solid var(--line); border-radius: 12px; }
+.assessment-sources legend { padding: 0 6px; }
+.assessment-sources label, .check-label { display: flex; align-items: center; gap: 8px; color: #25424b; font-size: .9rem; font-weight: 700; }
+.assessment-sources input, .check-label input { width: 18px; height: 18px; accent-color: var(--brand); }
+.profile-section, .cv-section, .manual-section { margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--line); }
+.section-label h3 { margin: 0; font-size: 1rem; }
+.section-label p { margin: 4px 0 14px; color: var(--muted); font-size: .88rem; }
+.is-hidden { display: none; }
+.cv-textarea { min-height: 170px; }
+.pdf-status { margin-top: 14px; padding: 14px; border: 1px solid #ead7a9; border-radius: 10px; color: #6c4a10; background: #fff9e9; font-size: .88rem; }
+.pdf-status p { margin: 5px 0; }
+.fixture-loader { margin-top: 22px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
+.fixture-loader summary { cursor: pointer; color: var(--brand-dark); font-weight: 800; }
+.fixture-loader p { color: var(--muted); font-size: .86rem; }
+.fixture-loader label { display: block; margin-bottom: 5px; color: #25424b; font-size: .84rem; font-weight: 800; }
+.fixture-loader .select { width: 100%; margin-bottom: 10px; }
+.form-actions--compact { margin-top: 14px; padding-top: 14px; }
+.processing-state { display: grid; place-items: start; min-height: 210px; padding: 30px 0; }
+.processing-state h2 { margin: 0; font-size: 1.22rem; }
+.processing-state p { max-width: 580px; margin: 8px 0 0; color: var(--muted); }
+.processing-state--error h2 { color: var(--danger); }
+.evidence-list { display: grid; gap: 10px; }
+.evidence-card { padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: #fcfefe; }
+.evidence-card--attention { border-color: #efb8b1; background: var(--danger-soft); }
+.evidence-card h4, .evidence-card h5 { margin: 0 0 7px; font-size: .93rem; text-transform: capitalize; }
+.evidence-card h4 span { display: inline-block; margin-left: 5px; color: var(--muted); font-size: .76rem; font-weight: 700; text-transform: uppercase; }
+.evidence-card p { margin: 7px 0 0; color: var(--muted); font-size: .86rem; }
+.evidence-quote { padding-left: 10px; border-left: 3px solid var(--brand-soft); color: #39545d !important; }
+.assessment-note { margin-top: 12px !important; color: var(--brand-dark) !important; font-weight: 700; }
+.badge--assessment { color: #16566b; border-color: #b8dce6; background: #ecf8fb; }
 .finding { padding: 13px 0; border-top: 1px solid var(--line); }
 .finding:first-child { border-top: 0; padding-top: 0; }
 .finding h3 { margin: 0 0 5px; font-size: .95rem; }
@@ -273,8 +305,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .progress { gap: 6px; }
   .progress__step { align-items: flex-start; padding: 8px; }
   .progress__step strong { font-size: .72rem; line-height: 1.2; }
+  .assessment-sources { display: grid; gap: 12px; }
+  .fixture-loader .button { width: 100%; }
+  .evidence-card { padding: 11px; }
 }
-@media (max-width: 440px) {
 @media (max-width: 440px) {
   .metric-grid { grid-template-columns: 1fr; }
   .hero { padding-top: 48px; }

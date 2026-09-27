@@ -46,9 +46,37 @@ All data is stored only in this browser using `localStorage`. It does not sync b
 
 ## Opportunity assessment
 
-The **Fit assessment** is a three-step flow: **Your background**, **Job posting**, and **Your assessment**. It preserves entered values while moving Back or Continue, and reuses an editable profile saved in this browser. It accepts pasted job-description text plus that reviewed profile, then highlights transparent matches, explicit/mandatory conditions, preferred qualifications, unknowns, and details to verify. It does not calculate a compatibility percentage or make a hiring prediction.
+The **Fit assessment** is a three-step flow: **Your background**, **Job posting**, and **Your assessment**. It preserves entered values while moving Back or Continue and reuses an editable profile saved in this browser.
 
-PDF extraction is not included in this no-dependency prototype. Use pasted text or manual entry instead. Add skills and experience only when they accurately reflect your background.
+### How the assessment works
+
+SAAY uses a transparent **local keyword and rule-based comparison**. It does **not** use semantic analysis, AI, external APIs, web browsing, or a hiring prediction.
+
+- Choose evidence from a saved profile, pasted CV text, and/or manual details for the current review.
+- Paste the job description; this is the only job-posting text SAAY assesses. An official URL is stored for you to open, but SAAY never retrieves, reads, verifies, or checks whether that posting is still open.
+- The results show direct keyword evidence, job requirements that are not currently evidenced, explicit conflicts only where entered facts directly contradict an explicit requirement, and details to verify.
+- Missing CV wording is **unknown**, not proof that a person lacks a skill. A wording gap can mean the skill is real but not described. Add information only when it is accurate, then reassess.
+- No percentage score, application recommendation, or hiring prediction is generated.
+
+### CV text and PDFs
+
+Pasted CV text can optionally be saved to the browser-only profile and removed later with **Clear saved profile and CV**. It does not sync across devices.
+
+A PDF picker is available as a local helper, but this no-dependency browser version cannot reliably extract PDF text or OCR scanned PDFs. SAAY never uploads, stores, or reads the selected PDF. If a PDF is selected, paste selectable text from it or use the structured/manual fields instead.
+
+### Saving and reassessing
+
+**Save to tracker** creates a **Saved** opportunity, never an Applied one. It includes the company, job title, official URL, pasted description, and assessment summary. You must change the stage to Applied yourself after applying through the employer website. Existing tracker records can be reassessed in place without creating duplicates.
+
+### Fictional verification fixtures and tests
+
+The assessment workspace includes clearly labelled fictional verification examples for testing only; they never create tracker records automatically. The local assessment engine can also be checked with:
+
+```bash
+node --test tests/assessment-engine.test.js
+```
+
+Add skills and experience only when they accurately reflect your background.
 
 ## Current feature scope
 

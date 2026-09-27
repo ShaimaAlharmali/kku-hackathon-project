@@ -4,7 +4,8 @@
     const date = new Date();
     date.setHours(0, 0, 0, 0);
     date.setDate(date.getDate() + days);
-    return date.toISOString().slice(0, 10);
+    // Format local calendar fields directly so the 13/14-day rules remain exact in every time zone.
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   }
 
   function daysFromNow(days) {

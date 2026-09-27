@@ -1,0 +1,14 @@
+# Project rules
+- Work only inside this folder. Never read or write files outside it, except a temporary folder when the pre-submission check asks for a fresh-download test.
+- After every change that works, commit with a short clear message and push to GitHub. Never force-push.
+- When I say "update GitHub": commit everything with a short clear message, push, and show me the repo link and the latest commit.
+- This project is already on GitHub as kku-hackathon-project. Never create another repo for it. Before making it public (for example to share it or turn on GitHub Pages), first check every file and the full git history for real personal data (phone numbers, ID numbers, addresses, real patients or customers) and for keys, show me what you found, and only continue when I say so.
+- The app must run end to end on its own. AI inside the app is optional: if I add it, the API key goes only in a .env file (already ignored by git) with a .env.example showing the variable name, and the app shows a clear message instead of crashing when the key is missing. Never put a key in the code.
+- Use only made-up data about other people. My own name, email and my own work are fine (for example in a CV). Never paste a real list of people (patients, members, volunteers, classmates), and never put phone numbers or ID numbers in the project.
+- Whatever I type into the app stays in my browser and never reaches GitHub. So if the app saves entries, it must show built-in example data when opened fresh, plus a "Load example" button. Put the example data in sample-data/data.js and load it with a script tag (a page opened by double-click can't load .json or .csv files on its own). Example dates are counted from today.
+- Save everything the project needs inside this folder: code libraries, fonts, images and sample files. Never link them from the internet. To make a downloadable image, draw decorations with code; don't draw picture files onto it.
+- If the app has timers or levels, add a "demo speed" or "skip" button and mention it in the README, so someone can see every feature in one minute.
+- Keep it small: one screen, one job. If a web page, it must work when opened as the README says. Python is allowed if the project needs it: standard library first, every package in requirements.txt, encoding="utf-8" for every file read and write.
+- File and folder names use only English letters, numbers, - and _. Refer to files with exactly the same capital letters as their names.
+- No file over 10 MB. Never use Git LFS.
+- Before adding a feature, plan it and ask me questions first.

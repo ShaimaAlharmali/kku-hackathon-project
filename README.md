@@ -17,20 +17,20 @@ A modern web browser. There is no installation, internet connection, account, da
 ## How to run it
 
 1. Open `index.html` by double-clicking it.
-2. On the landing page, select **Open your tracker**.
+2. Select **Check a job’s fit** to begin the guided review, or **Track an existing application** to open the tracker directly.
 3. Add an opportunity, update its stage, record follow-ups, and use the official employer link when you are ready to apply.
 
 The prototype works directly from the local file system with only relative paths.
 
 ## Try it with the sample data
 
-The first open shows clearly labelled **Fictional demo data**. It includes:
+SAAY starts with an empty tracker. Select **Try a demo** on the welcome page, dashboard, or tracker—or **Load example data** in the tracker—to deliberately add clearly labelled **Fictional demo data**. It includes:
 
 - one fictional application exactly 14 full calendar days in **Applied**, shown with a text-labelled red **Needs attention** state;
 - one fictional application exactly 13 days in **Interview**, which is intentionally **not** red;
 - a saved opportunity closing tomorrow and an application with a reminder due today.
 
-Use **Load example data** in the tracker to restore these made-up records, or **Clear all data** to remove every record stored in this browser.
+Demo records are clearly labelled and can be loaded without replacing personal records. Use **Clear all data** to remove every record stored in this browser.
 
 ### Date and follow-up rules
 
@@ -46,7 +46,7 @@ All data is stored only in this browser using `localStorage`. It does not sync b
 
 ## Opportunity assessment
 
-The **Fit assessment** workspace accepts pasted job-description text plus a profile users can review and correct. It highlights transparent matches, explicit/mandatory conditions, preferred qualifications, unknowns, and details to verify. It does not calculate a compatibility percentage or make a hiring prediction.
+The **Fit assessment** is a three-step flow: **Your background**, **Job posting**, and **Your assessment**. It preserves entered values while moving Back or Continue, and reuses an editable profile saved in this browser. It accepts pasted job-description text plus that reviewed profile, then highlights transparent matches, explicit/mandatory conditions, preferred qualifications, unknowns, and details to verify. It does not calculate a compatibility percentage or make a hiring prediction.
 
 PDF extraction is not included in this no-dependency prototype. Use pasted text or manual entry instead. Add skills and experience only when they accurately reflect your background.
 

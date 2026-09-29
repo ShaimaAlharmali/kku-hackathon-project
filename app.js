@@ -279,10 +279,10 @@
             <div class="container welcome-layout">
               <div class="welcome-copy">
                 <p class="eyebrow">SAAY for purposeful job-search progress</p>
-                <h1>Understand the opportunity. Plan your next step.</h1>
-                <p class="hero-copy">Compare a job posting with your background, identify matches and gaps, and keep your applications and follow-ups organized in one place.</p>
+                <h1>Organize opportunities. Plan your next step.</h1>
+                <p class="hero-copy">Keep opportunities, applications, dates, and follow-ups organized in one place.</p>
                 <div class="hero-actions">
-                  <button class="button" type="button" data-action="start-assessment">Check a job’s fit</button>
+                  <button class="button" type="button" data-action="open-tracker">Open tracker</button>
                   <button class="button button--text welcome-secondary" type="button" data-action="open-tracker">Track an existing application</button>
                 </div>
                 <p class="trust-note">SAAY helps you organize your decisions and applications. It does not submit applications, promise employment, guarantee interviews, or predict hiring outcomes.</p>
@@ -296,7 +296,7 @@
           </section>
           <section class="page-section how-it-works" id="how-it-works" aria-labelledby="how-title">
             <div class="container"><p class="eyebrow">How it works</p><h2 class="section-heading" id="how-title">A clear process, without an overwhelming dashboard first.</h2>
-              <div class="steps"><article class="step"><h3>Add your background.</h3><p>Share only the information you want to use when reviewing an opportunity.</p></article><article class="step"><h3>Assess a job posting.</h3><p>Review clear matches, unknowns, and details you may need to verify.</p></article><article class="step"><h3>Save and track your next steps.</h3><p>Keep the opportunity, its status, and follow-ups together when you choose to apply.</p></article></div>
+              <div class="steps"><article class="step"><h3>Add an opportunity.</h3><p>Save the role details you want to keep organized.</p></article><article class="step"><h3>Update your progress.</h3><p>Keep dates, reminders, and application stages together.</p></article><article class="step"><h3>Plan your next move.</h3><p>Use your tracker to stay focused on the next step.</p></article></div>
               <div class="welcome-demo"><p><strong>Want to explore first?</strong> Load clearly labelled fictional records without adding anything to your own tracker.</p><button class="button button--secondary" type="button" data-action="try-demo">Try a demo</button></div>
             </div>
           </section>
@@ -318,7 +318,6 @@
           <nav class="app-nav" aria-label="App navigation">
             ${navButton("dashboard", "Overview", view)}
             ${navButton("tracker", "Tracker", view)}
-            ${navButton("assessment", "Fit assessment", view)}
           </nav>
           <button class="button button--small" type="button" data-action="add-opportunity">Add opportunity</button>
         </div></header>
@@ -445,13 +444,13 @@
 
   function assessmentBadge(record) {
     if (!record.assessment) return "";
-    if (record.assessment.schemaVersion !== 2) return '<span class="badge badge--assessment">Earlier assessment</span>';
-    return `<span class="badge badge--assessment">${assessmentIsStale(record.assessment) ? "Assessment needs refresh" : "Assessment saved"}</span>`;
+    if (record.assessment.schemaVersion !== 2) return '<span class="badge badge--assessment">Earlier role check</span>';
+    return `<span class="badge badge--assessment">${assessmentIsStale(record.assessment) ? "Role check needs refresh" : "Role check saved"}</span>`;
   }
 
   function renderRecord(record) {
     const waiting = isAttention(record);
-    return `<article class="record-card"><div class="record-main"><div class="record-title-row"><h3 class="record-title">${escapeHtml(record.title)}</h3>${stageBadge(record.stage)}${demoBadge(record)}${assessmentBadge(record)}${waiting ? '<span class="badge badge--attention">Needs attention</span>' : ""}</div><p class="record-company">${escapeHtml(record.company)}</p><div class="record-meta"><span>${escapeHtml(record.opportunityType)}</span><span>${record.applicationDate ? `Applied ${formatDate(record.applicationDate)}` : "Not applied yet"}</span><span>Stage updated ${formatDate(record.stageChangedAt)}</span>${record.nextReminderDate ? `<span>Reminder ${dateValueLabel(record.nextReminderDate)}</span>` : ""}</div>${waiting ? `<p class="attention-message"><span class="attention-dot" aria-hidden="true"></span>${escapeHtml(attentionText(record))}</p>` : ""}</div><div class="record-actions"><button type="button" class="button button--secondary button--small" data-action="view-record" data-id="${record.id}">View</button><button type="button" class="button button--secondary button--small" data-action="reassess-record" data-id="${record.id}">${record.assessment ? "Reassess" : "Assess"}</button>${record.officialUrl ? `<button type="button" class="button button--small" data-action="apply-link" data-id="${record.id}">Employer website</button>` : ""}</div></article>`;
+    return `<article class="record-card"><div class="record-main"><div class="record-title-row"><h3 class="record-title">${escapeHtml(record.title)}</h3>${stageBadge(record.stage)}${demoBadge(record)}${assessmentBadge(record)}${waiting ? '<span class="badge badge--attention">Needs attention</span>' : ""}</div><p class="record-company">${escapeHtml(record.company)}</p><div class="record-meta"><span>${escapeHtml(record.opportunityType)}</span><span>${record.applicationDate ? `Applied ${formatDate(record.applicationDate)}` : "Not applied yet"}</span><span>Stage updated ${formatDate(record.stageChangedAt)}</span>${record.nextReminderDate ? `<span>Reminder ${dateValueLabel(record.nextReminderDate)}</span>` : ""}</div>${waiting ? `<p class="attention-message"><span class="attention-dot" aria-hidden="true"></span>${escapeHtml(attentionText(record))}</p>` : ""}</div><div class="record-actions"><button type="button" class="button button--secondary button--small" data-action="view-record" data-id="${record.id}">View</button><button type="button" class="button button--secondary button--small" data-action="reassess-record" data-id="${record.id}">${record.assessment ? "Check this role again" : "Quick role check"}</button>${record.officialUrl ? `<button type="button" class="button button--small" data-action="apply-link" data-id="${record.id}">Employer website</button>` : ""}</div></article>`;
   }
 
   function blankManualDetails() {
@@ -521,13 +520,13 @@
     if (isDraftStale(draft)) draft.runStatus = "stale";
     const step = state.assessmentStep;
     const content = step === 1 ? renderBackgroundStep(draft) : step === 2 ? renderJobStep(draft) : renderAssessmentStep(draft);
-    const reassess = draft.targetMode === "reassess" ? `<p class="assessment-context">Reassessing saved opportunity: <strong>${escapeHtml(draft.job.title)}</strong> at ${escapeHtml(draft.job.company)}.</p>` : "";
-    return `<section class="wizard" aria-labelledby="assessment-title"><div class="wizard__intro"><p class="eyebrow">Check a job’s fit</p><h1 id="assessment-title">${step === 1 ? "Your background" : step === 2 ? "Job posting" : "Your assessment"}</h1><p>${step === 1 ? "Choose the background evidence you want to review. Everything stays in this browser." : step === 2 ? "Confirm the posting details and paste the only job text SAAY will assess." : "Here’s what to review before you decide."}</p>${reassess}${draft.fixtureLabel ? `<p class="fixture-label">Fictional verification example: ${escapeHtml(draft.fixtureLabel)}</p>` : ""}</div>${renderProgress(step)}<div class="wizard-card">${content}</div></section>`;
+    const reassess = draft.targetMode === "reassess" ? `<p class="assessment-context">Checking saved opportunity again: <strong>${escapeHtml(draft.job.title)}</strong> at ${escapeHtml(draft.job.company)}.</p>` : "";
+    return `<section class="wizard" aria-labelledby="assessment-title"><div class="wizard__intro"><p class="eyebrow">Quick role check</p><h1 id="assessment-title">${step === 1 ? "Your background" : step === 2 ? "Job posting" : "Your role check"}</h1><p>${step === 1 ? "Choose the background evidence you want to review. Everything stays in this browser." : step === 2 ? "Confirm the posting details and paste the only job text SAAY will assess." : "Here’s what to review before you decide."}</p>${reassess}${draft.fixtureLabel ? `<p class="fixture-label">Fictional verification example: ${escapeHtml(draft.fixtureLabel)}</p>` : ""}</div>${renderProgress(step)}<div class="wizard-card">${content}</div></section>`;
   }
 
   function renderProgress(current) {
-    const labels = ["Your background", "Job posting", "Your assessment"];
-    return `<ol class="progress" aria-label="Assessment progress">${labels.map((label, index) => `<li class="progress__step ${current === index + 1 ? "is-current" : current > index + 1 ? "is-complete" : ""}" ${current === index + 1 ? 'aria-current="step"' : ""}><span>${index + 1}</span><strong>${label}</strong></li>`).join("")}</ol>`;
+    const labels = ["Your background", "Job posting", "Your role check"];
+    return `<ol class="progress" aria-label="Quick role check progress">${labels.map((label, index) => `<li class="progress__step ${current === index + 1 ? "is-current" : current > index + 1 ? "is-complete" : ""}" ${current === index + 1 ? 'aria-current="step"' : ""}><span>${index + 1}</span><strong>${label}</strong></li>`).join("")}</ol>`;
   }
 
   function quickProfileFields(profile) {
@@ -545,7 +544,7 @@
   }
 
   function renderJobStep(job) {
-    return `<form id="job-step-form" novalidate><div class="wizard-card__header"><h2>Step 2: Job posting</h2><p>Confirm the details yourself. Only pasted job text is assessed; SAAY does not browse, read, or verify the URL.</p></div><div class="error-summary" id="wizard-errors" tabindex="-1"><p>Review the highlighted fields.</p><ul></ul></div><div class="form-grid"><div class="field"><label for="assess-company">Company name <span class="required">*</span></label><input class="input" id="assess-company" name="company" value="${escapeAttr(job.company || "")}" aria-describedby="assess-company-error"><span class="field-error" id="assess-company-error" data-wizard-error-for="company"></span></div><div class="field"><label for="assess-title">Job title <span class="required">*</span></label><input class="input" id="assess-title" name="title" value="${escapeAttr(job.title || "")}" aria-describedby="assess-title-error"><span class="field-error" id="assess-title-error" data-wizard-error-for="title"></span></div><div class="field"><label for="assess-type">Opportunity type <span class="field-help">(optional)</span></label><select class="select" id="assess-type" name="opportunityType">${TYPES.map(type => `<option value="${type}" ${job.opportunityType === type ? "selected" : ""}>${type}</option>`).join("")}</select></div><div class="field"><label for="assess-url">Official opportunity link <span class="field-help">(optional)</span></label><input class="input" id="assess-url" name="officialUrl" type="url" value="${escapeAttr(job.officialUrl || "")}" placeholder="https://employer.example/role" aria-describedby="assess-url-error"><small>Stored for you to open later; it is not retrieved or verified.</small><span class="field-error" id="assess-url-error" data-wizard-error-for="officialUrl"></span></div><div class="field field--full"><label for="assess-description">Pasted job description <span class="required">*</span></label><textarea class="textarea" id="assess-description" name="description" placeholder="Paste role requirements, responsibilities, and qualifications here." aria-describedby="assess-description-help assess-description-error">${escapeHtml(job.description || "")}</textarea><small id="assess-description-help">SAAY compares this pasted text locally using transparent rule and keyword checks. It does not fetch the URL or use AI.</small><span class="field-error" id="assess-description-error" data-wizard-error-for="description"></span></div></div><div class="form-actions"><button type="button" class="button button--secondary" data-action="assessment-back">Back</button><button type="submit" class="button">Run local assessment</button></div></form>`;
+    return `<form id="job-step-form" novalidate><div class="wizard-card__header"><h2>Step 2: Job posting</h2><p>Confirm the details yourself. Only pasted job text is assessed; SAAY does not browse, read, or verify the URL.</p></div><div class="error-summary" id="wizard-errors" tabindex="-1"><p>Review the highlighted fields.</p><ul></ul></div><div class="form-grid"><div class="field"><label for="assess-company">Company name <span class="required">*</span></label><input class="input" id="assess-company" name="company" value="${escapeAttr(job.company || "")}" aria-describedby="assess-company-error"><span class="field-error" id="assess-company-error" data-wizard-error-for="company"></span></div><div class="field"><label for="assess-title">Job title <span class="required">*</span></label><input class="input" id="assess-title" name="title" value="${escapeAttr(job.title || "")}" aria-describedby="assess-title-error"><span class="field-error" id="assess-title-error" data-wizard-error-for="title"></span></div><div class="field"><label for="assess-type">Opportunity type <span class="field-help">(optional)</span></label><select class="select" id="assess-type" name="opportunityType">${TYPES.map(type => `<option value="${type}" ${job.opportunityType === type ? "selected" : ""}>${type}</option>`).join("")}</select></div><div class="field"><label for="assess-url">Official opportunity link <span class="field-help">(optional)</span></label><input class="input" id="assess-url" name="officialUrl" type="url" value="${escapeAttr(job.officialUrl || "")}" placeholder="https://employer.example/role" aria-describedby="assess-url-error"><small>Stored for you to open later; it is not retrieved or verified.</small><span class="field-error" id="assess-url-error" data-wizard-error-for="officialUrl"></span></div><div class="field field--full"><label for="assess-description">Pasted job description <span class="required">*</span></label><textarea class="textarea" id="assess-description" name="description" placeholder="Paste role requirements, responsibilities, and qualifications here." aria-describedby="assess-description-help assess-description-error">${escapeHtml(job.description || "")}</textarea><small id="assess-description-help">SAAY compares this pasted text locally using transparent rule and keyword checks. It does not fetch the URL or use AI.</small><span class="field-error" id="assess-description-error" data-wizard-error-for="description"></span></div></div><div class="form-actions"><button type="button" class="button button--secondary" data-action="assessment-back">Back</button><button type="submit" class="button">Run quick role check</button></div></form>`;
   }
 
   function evidenceList(items, render) {
@@ -557,9 +556,9 @@
   }
 
   function renderAssessmentStep(draft) {
-    if (draft.runStatus === "processing") return `<div class="processing-state" role="status" aria-live="polite" aria-busy="true"><h2>Reviewing your evidence</h2><p>SAAY is comparing the profile and pasted text you selected using local rules and keywords. It is not using AI or an external service.</p></div>`;
-    if (draft.runStatus === "error") return `<div class="processing-state processing-state--error" role="alert"><h2>Assessment could not run</h2><p>${escapeHtml(draft.errorMessage || "Review your information and try again.")}</p><div class="form-actions"><button type="button" class="button button--secondary" data-action="assessment-back">Back to job posting</button></div></div>`;
-    if (draft.runStatus !== "complete" || !draft.result) return `<div class="processing-state"><h2>Assessment not ready</h2><p>Return to the job posting, confirm the required information, and run the local assessment.</p><div class="form-actions"><button type="button" class="button button--secondary" data-action="assessment-back">Back to job posting</button></div></div>`;
+    if (draft.runStatus === "processing") return `<div class="processing-state" role="status" aria-live="polite" aria-busy="true"><h2>Reviewing your role details</h2><p>SAAY is comparing the profile and pasted text you selected using local rules and keywords. It is not using AI or an external service.</p></div>`;
+    if (draft.runStatus === "error") return `<div class="processing-state processing-state--error" role="alert"><h2>Role check could not run</h2><p>${escapeHtml(draft.errorMessage || "Review your information and try again.")}</p><div class="form-actions"><button type="button" class="button button--secondary" data-action="assessment-back">Back to job posting</button></div></div>`;
+    if (draft.runStatus !== "complete" || !draft.result) return `<div class="processing-state"><h2>Role check not ready</h2><p>Return to the job posting, confirm the required information, and run the quick role check.</p><div class="form-actions"><button type="button" class="button button--secondary" data-action="assessment-back">Back to job posting</button></div></div>`;
     const findings = draft.result.findings;
     const missing = findings.missingEvidence || [];
     const mismatches = (findings.eligibility || []).filter(item => item.status === "possible-mismatch");
@@ -597,17 +596,18 @@
   function opportunityForm(record = null) {
     const current = record || { stage: "Saved", opportunityType: "Internship", applicationDate: "", stageChangedAt: isoDate(), officialUrl: "", notes: "", closingDate: "", interviewDate: "", expectedResponseDate: "", nextReminderDate: "" };
     const edit = Boolean(record);
-    return `<div class="modal-header"><h2>${edit ? "Edit opportunity" : "Add an opportunity"}</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="Close dialog">×</button></div><div class="modal-body"><form id="opportunity-form" data-record-id="${record ? record.id : ""}" novalidate><div class="error-summary" id="form-errors" tabindex="-1"><p>Review the highlighted fields.</p><ul></ul></div><div class="form-grid"><div class="field"><label for="company">Company name <span class="required">*</span></label><input class="input" id="company" name="company" required value="${escapeAttr(current.company || "")}"><span class="field-error" data-error-for="company"></span></div><div class="field"><label for="title">Job title <span class="required">*</span></label><input class="input" id="title" name="title" required value="${escapeAttr(current.title || "")}"><span class="field-error" data-error-for="title"></span></div><div class="field"><label for="opportunityType">Opportunity type <span class="required">*</span></label><select class="select" id="opportunityType" name="opportunityType">${TYPES.map(type => `<option value="${type}" ${current.opportunityType === type ? "selected" : ""}>${type}</option>`).join("")}</select></div><div class="field"><label for="stage">Application stage <span class="required">*</span></label><select class="select" id="stage" name="stage">${STAGES.map(stage => `<option value="${stage}" ${current.stage === stage ? "selected" : ""}>${stage}</option>`).join("")}</select><small>Changing the stage resets its waiting time from today.</small></div><div class="field field--full"><label for="officialUrl">Official opportunity link</label><input class="input" id="officialUrl" name="officialUrl" type="url" value="${escapeAttr(current.officialUrl || "")}" placeholder="https://employer.example/role"><small>SAAY opens this link but never submits an application for you.</small><span class="field-error" data-error-for="officialUrl"></span></div><div class="field"><label for="applicationDate">Application date</label><input class="input" id="applicationDate" name="applicationDate" type="date" value="${escapeAttr(current.applicationDate || "")}"><small>Stored separately from the stage change date.</small></div><div class="field"><label for="stageChangedAt">Stage changed on</label><input class="input" id="stageChangedAt" name="stageChangedAt" type="date" value="${escapeAttr(current.stageChangedAt || isoDate())}" ${edit ? "readonly" : ""}><small>${edit ? "Updated automatically when you change the stage." : "Set this for a historical record."}</small></div><div class="field"><label for="closingDate">Closing date <span class="field-help">(optional)</span></label><input class="input" id="closingDate" name="closingDate" type="date" value="${escapeAttr(current.closingDate || "")}"></div><div class="field"><label for="interviewDate">Interview date <span class="field-help">(optional)</span></label><input class="input" id="interviewDate" name="interviewDate" type="date" value="${escapeAttr(current.interviewDate || "")}"></div><div class="field"><label for="expectedResponseDate">Expected response date <span class="field-help">(optional)</span></label><input class="input" id="expectedResponseDate" name="expectedResponseDate" type="date" value="${escapeAttr(current.expectedResponseDate || "")}"></div><div class="field"><label for="nextReminderDate">Next reminder <span class="field-help">(optional)</span></label><input class="input" id="nextReminderDate" name="nextReminderDate" type="date" value="${escapeAttr(current.nextReminderDate || "")}"></div><div class="field field--full"><label for="notes">Notes <span class="field-help">(optional)</span></label><textarea class="textarea" id="notes" name="notes" placeholder="Keep a short, useful note for yourself.">${escapeHtml(current.notes || "")}</textarea></div></div><div class="form-actions">${edit ? `<button type="button" class="button button--danger" data-action="confirm-delete" data-id="${record.id}">Delete</button>` : ""}<button type="button" class="button button--secondary" data-action="close-dialog">Cancel</button><button type="submit" class="button">${edit ? "Save changes" : "Save opportunity"}</button></div></form></div>`;
+    const quickRoleCheck = edit ? "" : `<section class="quick-role-check" aria-labelledby="quick-role-check-title"><h3 id="quick-role-check-title">Quick role check (optional)</h3><p>Paste a job description to spot matching terms before you save this opportunity.</p><button type="button" class="button button--secondary button--small" data-action="start-assessment">Quick role check</button></section>`;
+    return `<div class="modal-header"><h2>${edit ? "Edit opportunity" : "Add an opportunity"}</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="Close dialog">×</button></div><div class="modal-body"><form id="opportunity-form" data-record-id="${record ? record.id : ""}" novalidate><div class="error-summary" id="form-errors" tabindex="-1"><p>Review the highlighted fields.</p><ul></ul></div><div class="form-grid"><div class="field"><label for="company">Company name <span class="required">*</span></label><input class="input" id="company" name="company" required value="${escapeAttr(current.company || "")}"><span class="field-error" data-error-for="company"></span></div><div class="field"><label for="title">Job title <span class="required">*</span></label><input class="input" id="title" name="title" required value="${escapeAttr(current.title || "")}"><span class="field-error" data-error-for="title"></span></div><div class="field"><label for="opportunityType">Opportunity type <span class="required">*</span></label><select class="select" id="opportunityType" name="opportunityType">${TYPES.map(type => `<option value="${type}" ${current.opportunityType === type ? "selected" : ""}>${type}</option>`).join("")}</select></div><div class="field"><label for="stage">Application stage <span class="required">*</span></label><select class="select" id="stage" name="stage">${STAGES.map(stage => `<option value="${stage}" ${current.stage === stage ? "selected" : ""}>${stage}</option>`).join("")}</select><small>Changing the stage resets its waiting time from today.</small></div><div class="field field--full"><label for="officialUrl">Official opportunity link</label><input class="input" id="officialUrl" name="officialUrl" type="url" value="${escapeAttr(current.officialUrl || "")}" placeholder="https://employer.example/role"><small>SAAY opens this link but never submits an application for you.</small><span class="field-error" data-error-for="officialUrl"></span></div><div class="field"><label for="applicationDate">Application date</label><input class="input" id="applicationDate" name="applicationDate" type="date" value="${escapeAttr(current.applicationDate || "")}"><small>Stored separately from the stage change date.</small></div><div class="field"><label for="stageChangedAt">Stage changed on</label><input class="input" id="stageChangedAt" name="stageChangedAt" type="date" value="${escapeAttr(current.stageChangedAt || isoDate())}" ${edit ? "readonly" : ""}><small>${edit ? "Updated automatically when you change the stage." : "Set this for a historical record."}</small></div><div class="field"><label for="closingDate">Closing date <span class="field-help">(optional)</span></label><input class="input" id="closingDate" name="closingDate" type="date" value="${escapeAttr(current.closingDate || "")}"></div><div class="field"><label for="interviewDate">Interview date <span class="field-help">(optional)</span></label><input class="input" id="interviewDate" name="interviewDate" type="date" value="${escapeAttr(current.interviewDate || "")}"></div><div class="field"><label for="expectedResponseDate">Expected response date <span class="field-help">(optional)</span></label><input class="input" id="expectedResponseDate" name="expectedResponseDate" type="date" value="${escapeAttr(current.expectedResponseDate || "")}"></div><div class="field"><label for="nextReminderDate">Next reminder <span class="field-help">(optional)</span></label><input class="input" id="nextReminderDate" name="nextReminderDate" type="date" value="${escapeAttr(current.nextReminderDate || "")}"></div><div class="field field--full"><label for="notes">Notes <span class="field-help">(optional)</span></label><textarea class="textarea" id="notes" name="notes" placeholder="Keep a short, useful note for yourself.">${escapeHtml(current.notes || "")}</textarea></div></div><div class="form-actions">${edit ? `<button type="button" class="button button--danger" data-action="confirm-delete" data-id="${record.id}">Delete</button>` : ""}<button type="button" class="button button--secondary" data-action="close-dialog">Cancel</button><button type="submit" class="button">${edit ? "Save changes" : "Save opportunity"}</button></div></form>${quickRoleCheck}</div>`;
   }
 
   function assessmentSummary(record) {
     const assessment = record.assessment;
     if (!assessment) return "";
-    if (assessment.schemaVersion !== 2) return `<section class="detail-section"><h3>Assessment</h3><p>This opportunity has an earlier assessment format. Reassess it to see current evidence-based results.</p><div class="form-actions"><button type="button" class="button button--secondary" data-action="reassess-record" data-id="${record.id}">Reassess opportunity</button></div></section>`;
+    if (assessment.schemaVersion !== 2) return `<section class="detail-section"><h3>Role check</h3><p>This opportunity has an earlier role-check format. Check it again to see the current view.</p><div class="form-actions"><button type="button" class="button button--secondary" data-action="reassess-record" data-id="${record.id}">Check this role again</button></div></section>`;
     const findings = assessment.findings || {};
     const mismatchCount = (findings.eligibility || []).filter(item => item.status === "possible-mismatch").length;
     const stale = assessmentIsStale(assessment);
-    return `<section class="detail-section"><h3>Assessment summary</h3><p>${stale ? "Your saved profile changed after this review. Reassess to refresh profile-based evidence." : `Last assessed ${formatDate(assessment.assessedAt?.slice(0, 10))}.`}</p><div class="detail-grid"><div class="detail-data"><span>Matches</span><strong>${(findings.matches || []).length}</strong></div><div class="detail-data"><span>Not evidenced</span><strong>${(findings.missingEvidence || []).length}</strong></div><div class="detail-data"><span>Verify</span><strong>${(findings.verification || []).length + mismatchCount}</strong></div></div><div class="form-actions"><button type="button" class="button button--secondary" data-action="view-assessment" data-id="${record.id}">View assessment</button><button type="button" class="button" data-action="reassess-record" data-id="${record.id}">Reassess opportunity</button></div></section>`;
+    return `<section class="detail-section"><h3>Role check summary</h3><p>${stale ? "Your saved profile changed after this review. Check this role again to refresh the saved details." : `Last checked ${formatDate(assessment.assessedAt?.slice(0, 10))}.`}</p><div class="detail-grid"><div class="detail-data"><span>Matches</span><strong>${(findings.matches || []).length}</strong></div><div class="detail-data"><span>Not found</span><strong>${(findings.missingEvidence || []).length}</strong></div><div class="detail-data"><span>Check</span><strong>${(findings.verification || []).length + mismatchCount}</strong></div></div><div class="form-actions"><button type="button" class="button button--secondary" data-action="view-assessment" data-id="${record.id}">View role check</button><button type="button" class="button" data-action="reassess-record" data-id="${record.id}">Check this role again</button></div></section>`;
   }
 
   function recordDetail(record) {
@@ -740,7 +740,7 @@
     state.assessmentStep = 1;
     repository.clearDraft();
     setView("assessment");
-    announce(record ? "Step 1 of 3: Reassess your background." : "Step 1 of 3: Your background.");
+    announce(record ? "Step 1 of 3: Check your background again." : "Step 1 of 3: Your background.");
   }
 
   function moveAssessmentBack() {
@@ -819,7 +819,7 @@
     repository.clearDraft();
     renderApp();
     focusMainTitle();
-    announce("Reviewing your entered evidence locally.");
+    announce("Checking your entered details locally.");
     window.setTimeout(() => {
       const current = state.assessmentDraft;
       if (!current || current.runId !== runId || current.runStatus !== "processing") return;
@@ -830,12 +830,12 @@
         current.runStatus = "complete";
         renderApp();
         focusMainTitle();
-        announce("Step 3 of 3: Your assessment is ready.");
+        announce("Step 3 of 3: Your role check is ready.");
       } catch (error) {
         current.runStatus = "error";
         current.errorMessage = "SAAY could not analyze the entered text. Your information is still here—review it and try again.";
         renderApp();
-        announce("Assessment could not run.");
+        announce("Role check could not run.");
       }
     }, 250);
   }
@@ -847,14 +847,14 @@
   function saveAssessedOpportunity() {
     const draft = state.assessmentDraft;
     if (!draft?.job || draft.runStatus !== "complete" || !draft.result || isDraftStale(draft)) {
-      showToast("Run the assessment again after any changes before saving.");
+      showToast("Run the role check again after any changes before saving.");
       return;
     }
     const now = new Date().toISOString();
     const existing = draft.targetRecordId ? getRecord(draft.targetRecordId) : null;
     const identityChanged = existing && ["company", "title", "opportunityType", "officialUrl"].some(key => String(existing[key] || "") !== String(draft.job[key] || ""));
     const updateIdentity = !identityChanged || window.confirm("Update this saved opportunity’s company, title, type, or official link with the reviewed posting details?");
-    if (identityChanged && !updateIdentity) showToast("Assessment updated without changing the saved opportunity details.");
+    if (identityChanged && !updateIdentity) showToast("Role check updated without changing the saved opportunity details.");
     const record = normalizeOpportunity({
       ...(existing || {}),
       id: existing?.id || uid("assessed"),
@@ -863,7 +863,7 @@
       title: !existing || !identityChanged || updateIdentity ? draft.job.title : existing.title,
       opportunityType: !existing || !identityChanged || updateIdentity ? draft.job.opportunityType : existing.opportunityType,
       officialUrl: !existing || !identityChanged || updateIdentity ? draft.job.officialUrl : existing.officialUrl,
-      notes: existing?.notes || "Saved from a SAAY opportunity review.",
+      notes: existing?.notes || "Saved from a SAAY quick role check.",
       stage: existing?.stage || "Saved",
       applicationDate: existing?.applicationDate || "",
       stageChangedAt: existing?.stageChangedAt || isoDate(),
@@ -878,7 +878,7 @@
     repository.clearDraft();
     state.view = "tracker";
     renderApp();
-    showToast(existing ? "Assessment updated in your tracker." : "Assessed opportunity saved to your tracker.");
+    showToast(existing ? "Role check updated in your tracker." : "Role check saved to your tracker.");
     if (!existing && !repository.shareSeen()) showSharePrompt();
   }
 
@@ -978,7 +978,7 @@
       if (state.view === "assessment") captureCurrentAssessmentForm();
       setView(trigger.dataset.view);
     }
-    if (action === "start-assessment") startAssessment();
+    if (action === "start-assessment") { closeDialog(); startAssessment(); }
     if (action === "reassess-record") { const record = getRecord(id); if (record) { closeDialog(); startAssessment(record.id); } }
     if (action === "view-assessment") { const record = getRecord(id); if (record) { closeDialog(); state.assessmentDraft = blankAssessmentDraft(record); state.assessmentDraft.result = record.assessment; state.assessmentDraft.runStatus = record.assessment?.schemaVersion === 2 ? "complete" : "idle"; state.assessmentStep = 3; setView("assessment"); } }
     if (action === "open-tracker") {

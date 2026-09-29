@@ -2,7 +2,7 @@
 
 ## What it does
 
-SAAY is an accessible, English-language job-search organizer for students, recent graduates, and job seekers. It helps people save opportunities, apply through official employer websites, track progress, assess a role using their own context, and decide what to do next.
+SAAY is an accessible, English-language job-search organizer for students, recent graduates, and job seekers. It helps people save opportunities, apply through official employer websites, track progress, and decide what to do next.
 
 SAAY **does not** submit applications, guarantee employment or interviews, predict hiring outcomes, read LinkedIn, send email, connect calendars, or use job-board integrations.
 
@@ -17,8 +17,8 @@ A modern web browser. There is no installation, internet connection, account, da
 ## How to run it
 
 1. Open `index.html` by double-clicking it.
-2. Select **Check a job’s fit** to begin the guided review, or **Track an existing application** to open the tracker directly.
-3. Add an opportunity, update its stage, record follow-ups, and use the official employer link when you are ready to apply.
+2. Open **Tracker** to add an opportunity or update an existing application.
+3. When adding an opportunity, you can optionally choose **Quick role check** to paste a job description and spot matching terms before saving it.
 
 The prototype works directly from the local file system with only relative paths.
 
@@ -44,19 +44,21 @@ Demo records are clearly labelled and can be loaded without replacing personal r
 
 All data is stored only in this browser using `localStorage`. It does not sync between devices and is not uploaded to GitHub or any service.
 
-## Opportunity assessment
+## Optional quick role check
 
-The **Fit assessment** is a three-step flow: **Your background**, **Job posting**, and **Your assessment**. It preserves entered values while moving Back or Continue and reuses an editable profile saved in this browser.
+The tracker is the main experience. When adding an opportunity, **Quick role check** is an optional three-step flow: **Your background**, **Job posting**, and **Your role check**. It preserves entered values while moving Back or Continue and reuses an editable profile saved in this browser.
 
-### How the assessment works
+Paste a job description to spot matching terms before you save this opportunity.
+
+### How the role check works
 
 SAAY uses a transparent **local keyword and rule-based comparison**. It does **not** use semantic analysis, AI, external APIs, web browsing, or a hiring prediction.
 
 - Choose evidence from a saved profile, pasted CV text, and/or manual details for the current review.
-- Paste the job description; this is the only job-posting text SAAY assesses. An official URL is stored for you to open, but SAAY never retrieves, reads, verifies, or checks whether that posting is still open.
-- The results show direct keyword evidence, job requirements that are not currently evidenced, explicit conflicts only where entered facts directly contradict an explicit requirement, and details to verify.
-- Missing CV wording is **unknown**, not proof that a person lacks a skill. A wording gap can mean the skill is real but not described. Add information only when it is accurate, then reassess.
-- No percentage score, application recommendation, or hiring prediction is generated.
+- Paste the job description; this is the only job-posting text SAAY checks. An official URL is stored for you to open, but SAAY never retrieves, reads, verifies, or checks whether that posting is still open.
+- The results show direct keyword matches, terms not found in the selected material, direct conflicts only where entered facts directly contradict an explicit requirement, and details to confirm.
+- Missing CV wording is **unknown**, not proof that a person lacks a skill. A wording gap can mean the skill is real but not described. Add information only when it is accurate, then check the role again.
+- No percentage score, application recommendation, suitability judgment, or hiring prediction is generated.
 
 ### CV text and PDFs
 
@@ -64,13 +66,13 @@ Pasted CV text can optionally be saved to the browser-only profile and removed l
 
 A PDF picker is available as a local helper, but this no-dependency browser version cannot reliably extract PDF text or OCR scanned PDFs. SAAY never uploads, stores, or reads the selected PDF. If a PDF is selected, paste selectable text from it or use the structured/manual fields instead.
 
-### Saving and reassessing
+### Saving and checking again
 
-**Save to tracker** creates a **Saved** opportunity, never an Applied one. It includes the company, job title, official URL, pasted description, and assessment summary. You must change the stage to Applied yourself after applying through the employer website. Existing tracker records can be reassessed in place without creating duplicates.
+**Save to tracker** creates a **Saved** opportunity, never an Applied one. It includes the company, job title, official URL, pasted description, and role-check summary. You must change the stage to Applied yourself after applying through the employer website. Existing tracker records can be checked again in place without creating duplicates.
 
 ### Fictional verification fixtures and tests
 
-The assessment workspace includes clearly labelled fictional verification examples for testing only; they never create tracker records automatically. The local assessment engine can also be checked with:
+The quick role check includes clearly labelled fictional verification examples for testing only; they never create tracker records automatically. The local role-check engine can also be checked with:
 
 ```bash
 node --test tests/assessment-engine.test.js

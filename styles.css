@@ -229,6 +229,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .wizard-card__header h2 { margin: 0; font-size: 1.22rem; letter-spacing: -.025em; }
 .wizard-card__header p { margin: 7px 0 0; color: var(--muted); font-size: .92rem; }
 .assessment-result { margin-top: 4px; }
+.assessment-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.assessment-card { min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: #fcfefe; }
+.assessment-card--next { border-color: #b8dce6; background: #ecf8fb; }
+.assessment-card h2 { margin: 0 0 8px; font-size: 1rem; }
+.assessment-card p, .assessment-card ul { margin: 0; color: var(--muted); font-size: .88rem; }
+.assessment-card ul { padding-left: 19px; }
+.assessment-card li + li { margin-top: 4px; }
+.assessment-card__note { margin-bottom: 8px !important; color: #25424b !important; font-weight: 700; }
+.assessment-how-it-works { margin-top: 18px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
+.assessment-how-it-works summary { cursor: pointer; color: var(--brand-dark); font-size: .92rem; font-weight: 800; }
+.assessment-how-it-works__content { margin-top: 14px; }
+.assessment-how-it-works__content > p { margin: 0 0 10px; color: var(--muted); font-size: .88rem; }
 .assessment-context, .fixture-label { margin: 12px 0 0; padding: 10px 12px; border-radius: 9px; color: #25424b; background: var(--brand-soft); font-size: .88rem; }
 .fixture-label { border: 1px solid #e8d697; color: #6c4a10; background: #fff9e9; }
 .assessment-sources { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 0 0 22px; padding: 15px; border: 1px solid var(--line); border-radius: 12px; }
@@ -299,7 +311,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .metric-card__value { font-size: 1.7rem; }
   .record-card { grid-template-columns: 1fr; gap: 12px; }
   .record-actions { justify-content: flex-start; }
-  .form-grid, .form-grid--three, .detail-grid { grid-template-columns: 1fr; }
+  .form-grid, .form-grid--three, .detail-grid, .assessment-cards { grid-template-columns: 1fr; }
   .form-actions { justify-content: stretch; }
   .form-actions .button { flex: 1 1 auto; }
   .followup-form { grid-template-columns: 1fr; }

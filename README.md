@@ -44,6 +44,14 @@ Demo records are clearly labelled and can be loaded without replacing personal r
 
 All data is stored only in this browser using `localStorage`. It does not sync between devices and is not uploaded to GitHub or any service.
 
+## Quick interview prep
+
+Anyone can start **Quick interview prep** from the welcome page—no tracker record, account, or sign-in is required. The landing checklist is directly usable and saves its progress in the browser. It includes general prompts to understand the role, prepare one strong example, prepare questions, and confirm interview details.
+
+The full workspace keeps optional company, role, date/time, and meeting details alongside a shared checklist, private notes, and a Situation–Task–Action–Result (STAR) builder. Its prompts are general practical guidance, not personalized or company-specific advice.
+
+A normal prep save never creates a tracker record. **Save this prep to tracker** is an optional, explicit step that can create an Interview-stage opportunity or connect to an existing Interview-stage opportunity. Interview-stage records also provide their own **Prepare for interview** actions. Connected prep remains browser-only and preserves the record’s other tracker information.
+
 ## Optional quick role check
 
 The tracker is the main experience. When adding an opportunity, **Quick role check** is an optional three-step flow: **Your background**, **Job posting**, and **Your role check**. It preserves entered values while moving Back or Continue and reuses an editable profile saved in this browser.

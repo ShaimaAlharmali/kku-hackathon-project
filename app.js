@@ -5,9 +5,11 @@
   const PROFILE_KEY = "saay-profile-v1";
   const SHARED_KEY = "saay-first-share-seen-v1";
   const DRAFT_KEY = "saay-assessment-draft-v1";
+  const INTERVIEW_PREP_DRAFT_KEY = "saay-interview-prep-v1";
   const CV_LIMIT = 50000;
   const PDF_LIMIT = 8 * 1024 * 1024;
   const ENGINE = window.SAAYAssessmentEngine;
+  const INTERVIEW_PREP = window.SAAYInterviewPrep;
   const STAGES = ["Saved", "Applied", "Assessment", "Interview", "Offer", "Rejected", "Withdrawn"];
   const TYPES = ["Internship", "Cooperative Training", "Graduate Program", "Full-Time Job", "Part-Time Job", "Other"];
   const ACTIVE_STAGES = ["Applied", "Assessment", "Interview", "Offer"];
@@ -30,6 +32,9 @@
     opportunities: [],
     assessmentStep: 1,
     assessmentDraft: null,
+    interviewPrepDraft: null,
+    interviewPrepRecordId: "",
+    interviewPrepReturnView: "landing",
     storageNoticeShown: false
   };
 
@@ -137,6 +142,29 @@
     return { ...assessment, schemaVersion: 1, status: "legacy" };
   }
 
+  function normalizeInterviewPrep(prep) {
+    return INTERVIEW_PREP ? INTERVIEW_PREP.normalizeInterviewPrep(prep) : {
+      schemaVersion: 1,
+      company: "",
+      title: "",
+      interviewDate: "",
+      interviewTime: "",
+      meetingDetails: "",
+      checklist: { understandRole: false, strongExample: false, prepareQuestions: false, confirmDetails: false },
+      privateNotes: "",
+      star: { situation: "", task: "", action: "", result: "" },
+      updatedAt: ""
+    };
+  }
+
+  function completedInterviewPrepCount(prep) {
+    return INTERVIEW_PREP ? INTERVIEW_PREP.completedChecklistCount(prep) : 0;
+  }
+
+  function hasInterviewPrepProgress(prep) {
+    return INTERVIEW_PREP ? INTERVIEW_PREP.hasInterviewPrepProgress(prep) : false;
+  }
+
   function normalizeOpportunity(record) {
     const now = new Date().toISOString();
     const stage = STAGES.includes(record.stage) ? record.stage : "Saved";
@@ -157,6 +185,7 @@
       nextReminderDate: record.nextReminderDate || "",
       followUpHistory: Array.isArray(record.followUpHistory) ? record.followUpHistory : [],
       assessment: normalizeAssessment(record.assessment),
+      interviewPrep: record.interviewPrep ? normalizeInterviewPrep(record.interviewPrep) : null,
       createdAt: record.createdAt || now,
       updatedAt: record.updatedAt || now
     };
@@ -227,12 +256,45 @@
       const { result, errorMessage, ...safeDraft } = draft;
       writeStorage(DRAFT_KEY, JSON.stringify({ draft: safeDraft, step }));
     },
-    clearDraft() { removeStorage(DRAFT_KEY); }
+    clearDraft() { removeStorage(DRAFT_KEY); },
+    interviewPrep() {
+      try { return normalizeInterviewPrep(JSON.parse(readStorage(INTERVIEW_PREP_DRAFT_KEY)) || {}); } catch { return normalizeInterviewPrep({}); }
+    },
+    saveInterviewPrep(prep) {
+      const normalized = normalizeInterviewPrep({ ...prep, updatedAt: new Date().toISOString() });
+      writeStorage(INTERVIEW_PREP_DRAFT_KEY, JSON.stringify(normalized));
+      return normalized;
+    },
+    clearInterviewPrep() {
+      removeStorage(INTERVIEW_PREP_DRAFT_KEY);
+      return normalizeInterviewPrep({});
+    }
   };
 
   function saveOpportunities(records = state.opportunities) {
     state.opportunities = records.map(normalizeOpportunity);
     repository.save(state.opportunities);
+  }
+
+  function standaloneInterviewPrep() {
+    if (!state.interviewPrepDraft) state.interviewPrepDraft = repository.interviewPrep();
+    return normalizeInterviewPrep(state.interviewPrepDraft);
+  }
+
+  function saveStandaloneInterviewPrep(prep) {
+    state.interviewPrepDraft = repository.saveInterviewPrep(prep);
+    return state.interviewPrepDraft;
+  }
+
+  function prepFromRecord(record) {
+    const existing = normalizeInterviewPrep(record.interviewPrep || {});
+    return normalizeInterviewPrep({
+      ...existing,
+      company: existing.company || record.company,
+      title: existing.title || record.title,
+      interviewDate: existing.interviewDate || record.interviewDate,
+      updatedAt: existing.updatedAt
+    });
   }
 
   function isAttention(record) {
@@ -263,6 +325,7 @@
   }
 
   function renderLanding() {
+    state.interviewPrepDraft = repository.interviewPrep();
     app.innerHTML = `
       <div class="shell">
         <header class="site-header">
@@ -294,6 +357,7 @@
               </aside>
             </div>
           </section>
+          ${renderLandingInterviewPrep()}
           <section class="page-section how-it-works" id="how-it-works" aria-labelledby="how-title">
             <div class="container"><p class="eyebrow">How it works</p><h2 class="section-heading" id="how-title">A clear process, without an overwhelming dashboard first.</h2>
               <div class="steps"><article class="step"><h3>Add an opportunity.</h3><p>Save the role details you want to keep organized.</p></article><article class="step"><h3>Update your progress.</h3><p>Keep dates, reminders, and application stages together.</p></article><article class="step"><h3>Plan your next move.</h3><p>Use your tracker to stay focused on the next step.</p></article></div>
@@ -303,6 +367,19 @@
         </main>
         <footer class="site-footer"><div class="container footer-row"><span>SAAY (سَعْي) — purposeful job-search progress.</span><span>Browser-only prototype · your data stays on this device.</span></div></footer>
       </div>`;
+  }
+
+  function renderLandingInterviewPrep() {
+    const prep = standaloneInterviewPrep();
+    const complete = completedInterviewPrepCount(prep);
+    const actionLabel = hasInterviewPrepProgress(prep) ? "Continue my prep" : "Start my prep";
+    const items = [
+      ["understandRole", "Understand the role", "Write 2–3 responsibilities you want to discuss"],
+      ["strongExample", "Prepare one strong example", "Situation → Action → Result"],
+      ["prepareQuestions", "Prepare questions", "What would success look like in the first 90 days?", "What are the team’s priorities for the first few months?"],
+      ["confirmDetails", "Confirm the details", "Check the time, location or meeting link, and interviewer name."]
+    ];
+    return `<section class="page-section interview-spotlight" aria-labelledby="interview-spotlight-title"><div class="container"><article class="interview-spotlight__card"><div class="interview-spotlight__intro"><p class="eyebrow">Quick interview prep</p><h2 id="interview-spotlight-title">Prepare with confidence</h2><p>When an interview is scheduled, SAAY keeps your notes, key examples, questions, and checklist in one place.</p><p class="interview-spotlight__privacy">General prompts only. Your progress stays in this browser.</p><button class="button" type="button" data-action="start-interview-prep">${actionLabel}</button></div><div class="interview-checklist" aria-labelledby="interview-checklist-title"><div class="interview-checklist__header"><h3 id="interview-checklist-title">A practical starting checklist</h3><span id="landing-prep-progress" class="interview-progress">${complete} of 4 complete</span></div><fieldset><legend class="sr-only">Interview preparation checklist</legend>${items.map(([key, label, prompt, example]) => `<label class="interview-checklist__item" for="landing-prep-${key}"><input id="landing-prep-${key}" type="checkbox" data-interview-prep-check="${key}" ${prep.checklist[key] ? "checked" : ""}><span><strong>${label}</strong><small>${prompt}</small>${example ? `<small class="interview-checklist__example">${example}</small>` : ""}</span></label>`).join("")}</fieldset></div></article></div></section>`;
   }
 
   function brand(currentView) {
@@ -321,13 +398,133 @@
           </nav>
           <button class="button button--small" type="button" data-action="add-opportunity">Add opportunity</button>
         </div></header>
-        <main id="main-content" class="app-main"><div class="container">${view === "dashboard" ? renderDashboard() : view === "tracker" ? renderTracker() : renderAssessment()}</div></main>
+        <main id="main-content" class="app-main"><div class="container">${view === "dashboard" ? renderDashboard() : view === "tracker" ? renderTracker() : view === "interview-prep" ? renderInterviewPrep() : renderAssessment()}</div></main>
       </div>`;
     maybeShowSharePrompt();
   }
 
   function navButton(view, label, current) {
     return `<button type="button" data-action="navigate" data-view="${view}" ${current === view ? 'aria-current="page"' : ""}>${label}</button>`;
+  }
+
+  function renderInterviewPrep() {
+    const record = state.interviewPrepRecordId ? getRecord(state.interviewPrepRecordId) : null;
+    const connected = Boolean(record && record.stage === "Interview");
+    const prep = connected ? prepFromRecord(record) : standaloneInterviewPrep();
+    const complete = completedInterviewPrepCount(prep);
+    const checklist = [
+      ["understandRole", "Understand the role", "Write 2–3 responsibilities you want to discuss"],
+      ["strongExample", "Prepare one strong example", "Situation → Action → Result"],
+      ["prepareQuestions", "Prepare questions", "What would success look like in the first 90 days?"],
+      ["confirmDetails", "Confirm the details", "Check the time, location or meeting link, and interviewer name."]
+    ];
+    return `<section class="interview-prep-page" aria-labelledby="interview-prep-title"><div class="app-page-header"><div><p class="eyebrow">Quick interview prep</p><h1 id="interview-prep-title">Prepare with confidence.</h1><p>Keep practical interview preparation in one browser-only workspace. These are general prompts, not personalized advice.</p></div><button type="button" class="button button--secondary" data-action="back-from-interview-prep">Back</button></div>${connected ? `<div class="interview-connected-notice"><strong>Connected to ${escapeHtml(record.company)} · ${escapeHtml(record.title)}</strong><span>Your prep is saved only with this Interview-stage record in this browser.</span></div>` : `<div class="interview-connected-notice interview-connected-notice--standalone"><strong>Standalone prep</strong><span>Save your ideas here first. It will not create a tracker record unless you explicitly choose to connect it.</span></div>`}<form id="interview-prep-form" class="interview-prep-form" data-record-id="${connected ? record.id : ""}"><section class="panel interview-prep-panel"><div class="panel__header"><div><h2>Interview details</h2><p>Optional details to keep in one place.</p></div></div><div class="form-grid form-grid--three"><div class="field"><label for="prep-company">Company name</label><input class="input" id="prep-company" name="company" value="${escapeAttr(prep.company)}" autocomplete="organization"></div><div class="field"><label for="prep-title">Job title</label><input class="input" id="prep-title" name="title" value="${escapeAttr(prep.title)}" autocomplete="organization-title"></div><div class="field"><label for="prep-interview-date">Interview date</label><input class="input" id="prep-interview-date" name="interviewDate" type="date" value="${escapeAttr(prep.interviewDate)}"></div><div class="field"><label for="prep-interview-time">Interview time</label><input class="input" id="prep-interview-time" name="interviewTime" type="time" value="${escapeAttr(prep.interviewTime)}"></div><div class="field field--full"><label for="prep-meeting-details">Meeting link or location</label><input class="input" id="prep-meeting-details" name="meetingDetails" value="${escapeAttr(prep.meetingDetails)}" placeholder="Online meeting link or location"></div></div></section><div class="interview-prep-layout"><section class="panel interview-prep-panel"><div class="panel__header"><div><h2>Preparation checklist</h2><p><span class="interview-progress">${complete} of 4 complete</span></p></div></div><fieldset class="interview-prep-checklist"><legend class="sr-only">Interview preparation checklist</legend>${checklist.map(([key, label, prompt]) => `<label class="interview-checklist__item" for="prep-${key}"><input id="prep-${key}" name="checklist-${key}" type="checkbox" ${prep.checklist[key] ? "checked" : ""}><span><strong>${label}</strong><small>${prompt}</small>${key === "prepareQuestions" ? '<small class="interview-checklist__example">What are the team’s priorities for the first few months?</small>' : ""}</span></label>`).join("")}</fieldset></section><section class="panel interview-prep-panel"><div class="panel__header"><div><h2>Private notes</h2><p>Only saved in this browser.</p></div></div><div class="field"><label for="prep-private-notes">Your notes</label><textarea class="textarea" id="prep-private-notes" name="privateNotes" placeholder="Questions, research points, or reminders for yourself.">${escapeHtml(prep.privateNotes)}</textarea></div></section></div><section class="panel interview-prep-panel"><div class="panel__header"><div><h2>Build one STAR example</h2><p>Use a real example you can explain clearly: Situation, Task, Action, Result.</p></div></div><div class="star-grid"><div class="field"><label for="prep-situation">Situation</label><textarea class="textarea" id="prep-situation" name="star-situation" placeholder="What was happening?">${escapeHtml(prep.star.situation)}</textarea></div><div class="field"><label for="prep-task">Task</label><textarea class="textarea" id="prep-task" name="star-task" placeholder="What did you need to achieve?">${escapeHtml(prep.star.task)}</textarea></div><div class="field"><label for="prep-action">Action</label><textarea class="textarea" id="prep-action" name="star-action" placeholder="What did you do?">${escapeHtml(prep.star.action)}</textarea></div><div class="field"><label for="prep-result">Result</label><textarea class="textarea" id="prep-result" name="star-result" placeholder="What changed or what did you learn?">${escapeHtml(prep.star.result)}</textarea></div></div></section><div class="form-actions"><button type="button" class="button button--secondary" data-action="back-from-interview-prep">Cancel</button>${connected ? "" : '<button type="button" class="button button--secondary" data-action="save-prep-to-tracker">Save this prep to tracker</button>'}<button type="submit" class="button">${connected ? "Save to this opportunity" : "Save my prep"}</button></div></form></section>`;
+  }
+
+  function readInterviewPrepForm(form) {
+    const values = Object.fromEntries(new FormData(form).entries());
+    return normalizeInterviewPrep({
+      company: values.company,
+      title: values.title,
+      interviewDate: values.interviewDate,
+      interviewTime: values.interviewTime,
+      meetingDetails: values.meetingDetails,
+      checklist: {
+        understandRole: Boolean(form.elements["checklist-understandRole"]?.checked),
+        strongExample: Boolean(form.elements["checklist-strongExample"]?.checked),
+        prepareQuestions: Boolean(form.elements["checklist-prepareQuestions"]?.checked),
+        confirmDetails: Boolean(form.elements["checklist-confirmDetails"]?.checked)
+      },
+      privateNotes: values.privateNotes,
+      star: {
+        situation: values["star-situation"],
+        task: values["star-task"],
+        action: values["star-action"],
+        result: values["star-result"]
+      }
+    });
+  }
+
+  function saveInterviewPrepFromForm(form) {
+    const prep = readInterviewPrepForm(form);
+    const record = form.dataset.recordId ? getRecord(form.dataset.recordId) : null;
+    if (record && record.stage === "Interview") {
+      const connected = INTERVIEW_PREP.mergeInterviewPrepIntoRecord(record, prep);
+      saveOpportunities(state.opportunities.map(item => item.id === record.id ? connected : item));
+      state.interviewPrepRecordId = record.id;
+      renderApp();
+      showToast("Interview prep saved to this opportunity.");
+      return;
+    }
+    saveStandaloneInterviewPrep(prep);
+    renderApp();
+    showToast("Interview prep saved in this browser.");
+  }
+
+  function openInterviewPrep(recordId = "") {
+    const record = recordId ? getRecord(recordId) : null;
+    state.interviewPrepReturnView = state.view === "landing" ? "landing" : state.view;
+    state.interviewPrepRecordId = record && record.stage === "Interview" ? record.id : "";
+    if (!state.interviewPrepRecordId) state.interviewPrepDraft = repository.interviewPrep();
+    setView("interview-prep");
+  }
+
+  function updateLandingPrepChecklist(input) {
+    const key = input.dataset.interviewPrepCheck;
+    if (!key) return;
+    const prep = standaloneInterviewPrep();
+    const updated = saveStandaloneInterviewPrep({ ...prep, checklist: { ...prep.checklist, [key]: input.checked } });
+    const complete = completedInterviewPrepCount(updated);
+    const progress = document.getElementById("landing-prep-progress");
+    if (progress) progress.textContent = `${complete} of 4 complete`;
+    const cta = document.querySelector('[data-action="start-interview-prep"]');
+    if (cta) cta.textContent = hasInterviewPrepProgress(updated) ? "Continue my prep" : "Start my prep";
+    announce(`Interview prep: ${complete} of 4 tasks complete.`);
+  }
+
+  function openPrepConnectionDialog() {
+    const current = document.getElementById("interview-prep-form");
+    if (current) saveStandaloneInterviewPrep(readInterviewPrepForm(current));
+    const interviewRecords = state.opportunities.filter(record => record.stage === "Interview");
+    openDialog(`<div class="modal-header"><h2>Save this prep to tracker</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="Close dialog">×</button></div><div class="modal-body"><p class="section-copy">Choose an explicit tracker connection. Your standalone prep stays available in this browser.</p><form id="interview-prep-connect-form" novalidate><fieldset class="connection-options"><legend>Where should this prep be saved?</legend><label><input type="radio" name="connection" value="new" checked> Create a new Interview opportunity</label>${interviewRecords.length ? `<label><input type="radio" name="connection" value="existing"> Connect to an existing Interview opportunity</label><div class="field" id="existing-interview-choice"><label for="existing-interview-record">Interview opportunity</label><select class="select" id="existing-interview-record" name="recordId">${interviewRecords.map(record => `<option value="${record.id}">${escapeHtml(record.company)} · ${escapeHtml(record.title)}</option>`).join("")}</select></div>` : ""}</fieldset><div class="form-actions"><button type="button" class="button button--secondary" data-action="close-dialog">Cancel</button><button type="submit" class="button">Save to tracker</button></div></form></div>`, "Save interview prep to tracker");
+  }
+
+  function connectStandalonePrep(form) {
+    const values = Object.fromEntries(new FormData(form).entries());
+    const prep = standaloneInterviewPrep();
+    const now = new Date().toISOString();
+    let record;
+    if (values.connection === "existing") {
+      record = getRecord(values.recordId);
+      if (!record || record.stage !== "Interview") return;
+      const connected = INTERVIEW_PREP.mergeInterviewPrepIntoRecord(record, prep, now);
+      saveOpportunities(state.opportunities.map(item => item.id === record.id ? connected : item));
+      record = connected;
+    } else {
+      if (!prep.company || !prep.title) {
+        showToast("Add a company name and job title in your prep before creating a tracker opportunity.");
+        closeDialog();
+        return;
+      }
+      record = normalizeOpportunity({
+        id: uid("opportunity"),
+        company: prep.company,
+        title: prep.title,
+        opportunityType: "Other",
+        stage: "Interview",
+        stageChangedAt: isoDate(),
+        interviewDate: prep.interviewDate,
+        interviewPrep: normalizeInterviewPrep({ ...prep, updatedAt: now }),
+        createdAt: now,
+        updatedAt: now
+      });
+      saveOpportunities([...state.opportunities, record]);
+    }
+    state.interviewPrepRecordId = record.id;
+    state.interviewPrepReturnView = "tracker";
+    closeDialog();
+    setView("interview-prep");
+    showToast("Interview prep saved to your tracker.");
   }
 
   function recordsByRecent(records) {
@@ -349,7 +546,7 @@
         moves.push({ priority: 1, kind: "deadline", record, heading: `${record.company}: complete your application`, text: `The fictional or saved closing date is ${readableDateDelta(closing)}. Review requirements and tailor your CV.`, action: "view" });
       }
       if (record.stage === "Interview" && interview !== null && interview >= 0 && interview <= 2) {
-        moves.push({ priority: 2, kind: "interview", record, heading: `${record.company}: prepare for your interview`, text: `Your interview is ${readableDateDelta(interview)}. Prepare relevant skill examples and questions.`, action: "view" });
+        moves.push({ priority: 2, kind: "interview", record, heading: `${record.company}: prepare for your interview`, text: `Your interview is ${readableDateDelta(interview)}. Prepare relevant skill examples and questions.`, action: "interview-prep" });
       }
       if (reminder !== null && reminder <= 0) {
         moves.push({ priority: 3, kind: "reminder", record, heading: `${record.company}: reminder due`, text: `Your next reminder was scheduled for ${formatDate(record.nextReminderDate)}. Review the application and record a follow-up if you take one.`, action: "view" });
@@ -400,7 +597,8 @@
 
   function renderNextMove(move) {
     const attention = move.kind === "attention";
-    return `<article class="next-card"><div class="next-card__topline"><span class="priority-label ${attention ? "priority-label--attention" : ""}">${attention ? "Needs attention" : "Next step"}</span>${stageBadge(move.record.stage)}</div><h3>${escapeHtml(move.heading)}</h3><p>${escapeHtml(move.text)}</p><div class="next-card__actions"><button type="button" class="button button--small" data-action="view-record" data-id="${move.record.id}">${move.action === "followup" ? "Record follow-up" : "View details"}</button>${move.action === "followup" ? `<button type="button" class="button button--secondary button--small" data-action="open-copy" data-id="${move.record.id}">Copy follow-up message</button>` : ""}</div></article>`;
+    const primaryLabel = move.action === "followup" ? "Record follow-up" : move.action === "interview-prep" ? "Prepare for your interview" : "View details";
+    return `<article class="next-card"><div class="next-card__topline"><span class="priority-label ${attention ? "priority-label--attention" : ""}">${attention ? "Needs attention" : "Next step"}</span>${stageBadge(move.record.stage)}</div><h3>${escapeHtml(move.heading)}</h3><p>${escapeHtml(move.text)}</p><div class="next-card__actions"><button type="button" class="button button--small" data-action="${move.action === "interview-prep" ? "open-connected-interview-prep" : "view-record"}" data-id="${move.record.id}">${primaryLabel}</button>${move.action === "interview-prep" ? `<button type="button" class="button button--secondary button--small" data-action="view-record" data-id="${move.record.id}">View details</button>` : ""}${move.action === "followup" ? `<button type="button" class="button button--secondary button--small" data-action="open-copy" data-id="${move.record.id}">Copy follow-up message</button>` : ""}</div></article>`;
   }
 
   function renderMiniRecord(record) {
@@ -450,7 +648,7 @@
 
   function renderRecord(record) {
     const waiting = isAttention(record);
-    return `<article class="record-card"><div class="record-main"><div class="record-title-row"><h3 class="record-title">${escapeHtml(record.title)}</h3>${stageBadge(record.stage)}${demoBadge(record)}${assessmentBadge(record)}${waiting ? '<span class="badge badge--attention">Needs attention</span>' : ""}</div><p class="record-company">${escapeHtml(record.company)}</p><div class="record-meta"><span>${escapeHtml(record.opportunityType)}</span><span>${record.applicationDate ? `Applied ${formatDate(record.applicationDate)}` : "Not applied yet"}</span><span>Stage updated ${formatDate(record.stageChangedAt)}</span>${record.nextReminderDate ? `<span>Reminder ${dateValueLabel(record.nextReminderDate)}</span>` : ""}</div>${waiting ? `<p class="attention-message"><span class="attention-dot" aria-hidden="true"></span>${escapeHtml(attentionText(record))}</p>` : ""}</div><div class="record-actions"><button type="button" class="button button--secondary button--small" data-action="view-record" data-id="${record.id}">View</button><button type="button" class="button button--secondary button--small" data-action="reassess-record" data-id="${record.id}">${record.assessment ? "Check this role again" : "Quick role check"}</button>${record.officialUrl ? `<button type="button" class="button button--small" data-action="apply-link" data-id="${record.id}">Employer website</button>` : ""}</div></article>`;
+    return `<article class="record-card"><div class="record-main"><div class="record-title-row"><h3 class="record-title">${escapeHtml(record.title)}</h3>${stageBadge(record.stage)}${demoBadge(record)}${assessmentBadge(record)}${waiting ? '<span class="badge badge--attention">Needs attention</span>' : ""}</div><p class="record-company">${escapeHtml(record.company)}</p><div class="record-meta"><span>${escapeHtml(record.opportunityType)}</span><span>${record.applicationDate ? `Applied ${formatDate(record.applicationDate)}` : "Not applied yet"}</span><span>Stage updated ${formatDate(record.stageChangedAt)}</span>${record.nextReminderDate ? `<span>Reminder ${dateValueLabel(record.nextReminderDate)}</span>` : ""}</div>${waiting ? `<p class="attention-message"><span class="attention-dot" aria-hidden="true"></span>${escapeHtml(attentionText(record))}</p>` : ""}</div><div class="record-actions"><button type="button" class="button button--secondary button--small" data-action="view-record" data-id="${record.id}">View</button>${record.stage === "Interview" ? `<button type="button" class="button button--secondary button--small" data-action="open-connected-interview-prep" data-id="${record.id}">Prepare for interview</button>` : ""}<button type="button" class="button button--secondary button--small" data-action="reassess-record" data-id="${record.id}">${record.assessment ? "Check this role again" : "Quick role check"}</button>${record.officialUrl ? `<button type="button" class="button button--small" data-action="apply-link" data-id="${record.id}">Employer website</button>` : ""}</div></article>`;
   }
 
   function blankManualDetails() {
@@ -610,10 +808,17 @@
     return `<section class="detail-section"><h3>Role check summary</h3><p>${stale ? "Your saved profile changed after this review. Check this role again to refresh the saved details." : `Last checked ${formatDate(assessment.assessedAt?.slice(0, 10))}.`}</p><div class="detail-grid"><div class="detail-data"><span>Matches</span><strong>${(findings.matches || []).length}</strong></div><div class="detail-data"><span>Not found</span><strong>${(findings.missingEvidence || []).length}</strong></div><div class="detail-data"><span>Check</span><strong>${(findings.verification || []).length + mismatchCount}</strong></div></div><div class="form-actions"><button type="button" class="button button--secondary" data-action="view-assessment" data-id="${record.id}">View role check</button><button type="button" class="button" data-action="reassess-record" data-id="${record.id}">Check this role again</button></div></section>`;
   }
 
+  function interviewPrepSummary(record) {
+    if (record.stage !== "Interview") return "";
+    const prep = prepFromRecord(record);
+    const complete = completedInterviewPrepCount(prep);
+    return `<section class="detail-section interview-detail-section"><h3>Interview prep</h3><p>${complete ? `${complete} of 4 preparation tasks complete.` : "Keep your notes, questions, and one STAR example in one browser-only space."}</p><div class="form-actions"><button type="button" class="button" data-action="open-connected-interview-prep" data-id="${record.id}">${record.interviewPrep ? "Open interview prep" : "Prepare for interview"}</button></div></section>`;
+  }
+
   function recordDetail(record) {
     const attention = isAttention(record);
     const history = record.followUpHistory.length ? record.followUpHistory.map(item => `<li class="history-item"><strong>Follow-up completed ${formatDate(item.completedAt)}</strong>${item.note ? `<br>${escapeHtml(item.note)}` : ""}</li>`).join("") : "<li class=\"history-item\">No completed follow-ups yet.</li>";
-    return `<div class="modal-header"><h2>${escapeHtml(record.title)}</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="Close dialog">×</button></div><div class="modal-body"><section class="detail-section"><div class="detail-header"><div><p class="record-company">${escapeHtml(record.company)}</p></div><div>${stageBadge(record.stage)} ${demoBadge(record)} ${assessmentBadge(record)}</div></div>${attention ? `<p class="attention-message"><span class="attention-dot" aria-hidden="true"></span>${escapeHtml(attentionText(record))}</p>` : ""}<div class="detail-grid" style="margin-top:14px"><div class="detail-data"><span>Type</span><strong>${escapeHtml(record.opportunityType)}</strong></div><div class="detail-data"><span>Application date</span><strong>${formatDate(record.applicationDate)}</strong></div><div class="detail-data"><span>Stage changed</span><strong>${formatDate(record.stageChangedAt)}</strong></div></div></section>${assessmentSummary(record)}<section class="detail-section"><h3>Suggested next step</h3><p class="guidance">${escapeHtml(stageAdvice[record.stage])}</p></section>${record.notes ? `<section class="detail-section"><h3>Your notes</h3><p>${escapeHtml(record.notes)}</p></section>` : ""}<section class="detail-section"><h3>Dates & reminders</h3><div class="detail-grid"><div class="detail-data"><span>Closing</span><strong>${dateValueLabel(record.closingDate)}</strong></div><div class="detail-data"><span>Interview</span><strong>${dateValueLabel(record.interviewDate)}</strong></div><div class="detail-data"><span>Next reminder</span><strong>${dateValueLabel(record.nextReminderDate)}</strong></div></div></section><section class="detail-section"><h3>Follow-up history</h3><p>Complete a follow-up to keep it out of unfinished tasks. This only records your action; SAAY never sends anything.</p><form id="followup-form" class="followup-form" data-id="${record.id}"><label class="sr-only" for="followup-note">Follow-up note</label><input class="input" id="followup-note" name="note" placeholder="Optional note, e.g. sent a polite check-in"><button class="button button--small" type="submit">Mark follow-up complete</button></form><ul class="followup-history">${history}</ul>${attention ? `<div style="margin-top:14px"><button type="button" class="button button--secondary button--small" data-action="open-copy" data-id="${record.id}">Copy follow-up message</button></div>` : ""}</section><section class="detail-section"><div class="form-actions">${record.officialUrl ? `<button type="button" class="button" data-action="apply-link" data-id="${record.id}">Apply on employer website</button>` : ""}<button type="button" class="button button--secondary" data-action="edit-record" data-id="${record.id}">Edit opportunity</button></div></section></div>`;
+    return `<div class="modal-header"><h2>${escapeHtml(record.title)}</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="Close dialog">×</button></div><div class="modal-body"><section class="detail-section"><div class="detail-header"><div><p class="record-company">${escapeHtml(record.company)}</p></div><div>${stageBadge(record.stage)} ${demoBadge(record)} ${assessmentBadge(record)}</div></div>${attention ? `<p class="attention-message"><span class="attention-dot" aria-hidden="true"></span>${escapeHtml(attentionText(record))}</p>` : ""}<div class="detail-grid" style="margin-top:14px"><div class="detail-data"><span>Type</span><strong>${escapeHtml(record.opportunityType)}</strong></div><div class="detail-data"><span>Application date</span><strong>${formatDate(record.applicationDate)}</strong></div><div class="detail-data"><span>Stage changed</span><strong>${formatDate(record.stageChangedAt)}</strong></div></div></section>${assessmentSummary(record)}${interviewPrepSummary(record)}<section class="detail-section"><h3>Suggested next step</h3><p class="guidance">${escapeHtml(stageAdvice[record.stage])}</p></section>${record.notes ? `<section class="detail-section"><h3>Your notes</h3><p>${escapeHtml(record.notes)}</p></section>` : ""}<section class="detail-section"><h3>Dates & reminders</h3><div class="detail-grid"><div class="detail-data"><span>Closing</span><strong>${dateValueLabel(record.closingDate)}</strong></div><div class="detail-data"><span>Interview</span><strong>${dateValueLabel(record.interviewDate)}</strong></div><div class="detail-data"><span>Next reminder</span><strong>${dateValueLabel(record.nextReminderDate)}</strong></div></div></section><section class="detail-section"><h3>Follow-up history</h3><p>Complete a follow-up to keep it out of unfinished tasks. This only records your action; SAAY never sends anything.</p><form id="followup-form" class="followup-form" data-id="${record.id}"><label class="sr-only" for="followup-note">Follow-up note</label><input class="input" id="followup-note" name="note" placeholder="Optional note, e.g. sent a polite check-in"><button class="button button--small" type="submit">Mark follow-up complete</button></form><ul class="followup-history">${history}</ul>${attention ? `<div style="margin-top:14px"><button type="button" class="button button--secondary button--small" data-action="open-copy" data-id="${record.id}">Copy follow-up message</button></div>` : ""}</section><section class="detail-section"><div class="form-actions">${record.officialUrl ? `<button type="button" class="button" data-action="apply-link" data-id="${record.id}">Apply on employer website</button>` : ""}<button type="button" class="button button--secondary" data-action="edit-record" data-id="${record.id}">Edit opportunity</button></div></section></div>`;
   }
 
   function openCopyDialog(record) {
@@ -673,6 +878,7 @@
       stageChangedAt: existing ? (stageChanged ? isoDate() : existing.stageChangedAt) : (formData.stageChangedAt || isoDate()),
       followUpHistory: existing?.followUpHistory || [],
       assessment: existing?.assessment || null,
+      interviewPrep: existing?.interviewPrep || null,
       createdAt: existing?.createdAt || now,
       updatedAt: now
     });
@@ -973,7 +1179,11 @@
     const action = trigger.dataset.action;
     const id = trigger.dataset.id;
     if (action === "open-app") { state.view = "dashboard"; renderApp(); }
-    if (action === "go-landing") { event.preventDefault(); state.view = "landing"; state.assessmentDraft = null; state.assessmentStep = 1; renderLanding(); }
+    if (action === "go-landing") { event.preventDefault(); state.view = "landing"; state.assessmentDraft = null; state.assessmentStep = 1; state.interviewPrepRecordId = ""; renderLanding(); }
+    if (action === "start-interview-prep") openInterviewPrep();
+    if (action === "open-connected-interview-prep") { closeDialog(); openInterviewPrep(id); }
+    if (action === "back-from-interview-prep") { const returnView = state.interviewPrepReturnView; state.interviewPrepRecordId = ""; if (returnView === "landing") { state.view = "landing"; renderLanding(); focusMainTitle(); } else { setView(returnView); } }
+    if (action === "save-prep-to-tracker") openPrepConnectionDialog();
     if (action === "navigate") {
       if (state.view === "assessment") captureCurrentAssessmentForm();
       setView(trigger.dataset.view);
@@ -1013,6 +1223,10 @@
   });
 
   document.addEventListener("change", event => {
+    if (event.target.dataset.interviewPrepCheck) {
+      updateLandingPrepChecklist(event.target);
+      return;
+    }
     if (event.target.id === "cv-pdf") {
       const file = event.target.files?.[0];
       if (!file) return;
@@ -1044,6 +1258,8 @@
     if (event.target.id === "followup-form") { event.preventDefault(); completeFollowUp(event.target); }
     if (event.target.id === "background-step-form") { event.preventDefault(); saveBackgroundStep(event.target); }
     if (event.target.id === "job-step-form") { event.preventDefault(); saveJobStep(event.target); }
+    if (event.target.id === "interview-prep-form") { event.preventDefault(); saveInterviewPrepFromForm(event.target); }
+    if (event.target.id === "interview-prep-connect-form") { event.preventDefault(); connectStandalonePrep(event.target); }
   });
 
   state.opportunities = repository.get();

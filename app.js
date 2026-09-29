@@ -280,17 +280,17 @@
               <div class="welcome-copy">
                 <p class="eyebrow">SAAY for purposeful job-search progress</p>
                 <h1>Organize opportunities. Plan your next step.</h1>
-                <p class="hero-copy">Keep opportunities, applications, dates, and follow-ups organized in one place.</p>
+                <p class="hero-copy">Keep opportunities you find through LinkedIn, job boards, or employer websites organized in one place.</p>
                 <div class="hero-actions">
                   <button class="button" type="button" data-action="open-tracker">Open tracker</button>
-                  <button class="button button--text welcome-secondary" type="button" data-action="open-tracker">Track an existing application</button>
+                  <button class="button button--text welcome-secondary" type="button" data-action="add-opportunity">Add an opportunity</button>
                 </div>
                 <p class="trust-note">SAAY helps you organize your decisions and applications. It does not submit applications, promise employment, guarantee interviews, or predict hiring outcomes.</p>
               </div>
               <aside class="welcome-steps" aria-labelledby="welcome-steps-title">
                 <p class="eyebrow">A simple place to begin</p>
                 <h2 id="welcome-steps-title">Your next career move, in 3 clear steps.</h2>
-                <ol><li>Add your background.</li><li>Check the opportunity.</li><li>Track your next move.</li></ol>
+                <ol><li>Find an opportunity.</li><li>Add it to your tracker.</li><li>Plan your next move.</li></ol>
               </aside>
             </div>
           </section>
@@ -991,7 +991,7 @@
     if (action === "clear-cv-pdf") { const draft = captureBackgroundDraft(); draft.cv.pdfAttempt = { status: "none" }; renderApp(); showToast("Selected PDF cleared. It was never uploaded or saved."); }
     if (action === "clear-profile") { if (window.confirm("Clear your saved profile and pasted CV text from this browser? Your tracker records will remain.")) { const draft = captureBackgroundDraft(); draft.profile = repository.clearProfile(); draft.cv = { ...draft.cv, text: "", saveToProfile: false }; renderApp(); showToast("Saved profile and CV text cleared from this browser."); } }
     if (action === "load-assessment-fixture") { const fixtureId = document.getElementById("assessment-fixture")?.value; const fixture = (window.SAAY_ASSESSMENT_FIXTURES || []).find(item => item.id === fixtureId); if (fixture) { state.assessmentDraft = { ...blankAssessmentDraft(), profile: normalizeProfile(fixture.profile), sourceSelection: { ...fixture.sourceSelection }, cv: { ...fixture.cv, saveToProfile: false }, manual: { ...fixture.manual }, job: { ...fixture.job }, fixtureLabel: fixture.label }; state.assessmentStep = 1; renderApp(); showToast("Fictional verification example loaded into this assessment only."); } }
-    if (action === "add-opportunity") openDialog(opportunityForm(), "Add opportunity");
+    if (action === "add-opportunity") { if (state.view === "landing") state.view = "tracker"; openDialog(opportunityForm(), "Add opportunity"); }
     if (action === "close-dialog") closeDialog();
     if (action === "view-record") { const record = getRecord(id); if (record) openDialog(recordDetail(record), "Opportunity details"); }
     if (action === "edit-record") { const record = getRecord(id); if (record) openDialog(opportunityForm(record), "Edit opportunity"); }
